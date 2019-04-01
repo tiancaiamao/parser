@@ -330,6 +330,7 @@ func (n *ExecuteStmt) Accept(v Visitor) (Node, bool) {
 // See https://dev.mysql.com/doc/refman/5.7/en/commit.html
 type BeginStmt struct {
 	stmtNode
+	Pessimistic bool
 }
 
 // Restore implements Node interface.
