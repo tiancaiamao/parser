@@ -1822,7 +1822,7 @@ type GrantStmt struct {
 	Privs      []*PrivElem
 	ObjectType ObjectTypeType
 	Level      *GrantLevel
-	Users      []*UserSpec
+	Users      []*auth.UserIdentity
 	WithGrant  bool
 }
 

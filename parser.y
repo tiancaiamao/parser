@@ -7985,13 +7985,13 @@ DropBindingStmt:
  * See https://dev.mysql.com/doc/refman/5.7/en/grant.html
  *************************************************************************************/
 GrantStmt:
-	 "GRANT" PrivElemList "ON" ObjectType PrivLevel "TO" UserSpecList WithGrantOptionOpt
+	 "GRANT" PrivElemList "ON" ObjectType PrivLevel "TO" UsernameList WithGrantOptionOpt
 	 {
 		$$ = &ast.GrantStmt{
 			Privs: $2.([]*ast.PrivElem),
 			ObjectType: $4.(ast.ObjectTypeType),
 			Level: $5.(*ast.GrantLevel),
-			Users: $7.([]*ast.UserSpec),
+			Users: $7.([]*auth.UserIdentity),
 			WithGrant: $8.(bool),
 		}
 	 }
