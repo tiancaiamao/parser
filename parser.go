@@ -42,6 +42,7 @@ import (
 )
 
 type yySymType struct {
+	typ       int8
 	yys       int
 	offset    int // offset
 	item      interface{}
@@ -7974,8 +7975,8 @@ func yyParse(yylex yyLexer, parser *Parser) int {
 
 	yyEx, _ := yylex.(yyLexerEx)
 	var yyn int
-	parser.yylval = yySymType{}
-	parser.yyVAL = yySymType{}
+	var yylval yySymType
+	var yyVAL yySymType
 	yyS := parser.cache
 
 	Nerrs := 0   /* number of errors */
@@ -8003,18 +8004,15 @@ ret1:
 yystack:
 	/* put a state and value onto the stack */
 	yyp++
-	if yyp >= len(yyS) {
-		nyys := make([]yySymType, len(yyS)*2)
-		copy(nyys, yyS)
-		yyS = nyys
-		parser.cache = yyS
+	if yyp >= yyS.Len() {
+		yyS.Grow()
 	}
-	yyS[yyp] = parser.yyVAL
-	yyS[yyp].yys = yystate
+	yyS.Set(yyp, &yyVAL)
+	yyS.yys[yyp] = yystate
 
 yynewstate:
 	if yychar < 0 {
-		yychar = yylex1(yylex, &parser.yylval)
+		yychar = yylex1(yylex, &yylval)
 		var ok bool
 		if yyxchar, ok = yyXLAT[yychar]; !ok {
 			yyxchar = len(yySymNames) // > tab width
@@ -8022,9 +8020,9 @@ yynewstate:
 	}
 	if yyDebug >= 4 {
 		var a []int
-		for _, v := range yyS[:yyp+1] {
-			a = append(a, v.yys)
-		}
+		// for _, v := range yyS[:yyp+1] {
+		// 	a = append(a, v.yys)
+		// }
 		__yyfmt__.Printf("state stack %v\n", a)
 	}
 	row := yyParseTab[yystate]
@@ -8037,7 +8035,7 @@ yynewstate:
 	switch {
 	case yyn > 0: // shift
 		yychar = -1
-		parser.yyVAL = parser.yylval
+		yyVAL = yylval
 		yystate = yyn
 		yyshift = yyn
 		if yyDebug >= 2 {
@@ -8085,12 +8083,12 @@ yynewstate:
 
 			/* find a state where "error" is a legal shift action */
 			for yyp >= 0 {
-				row := yyParseTab[yyS[yyp].yys]
+				row := yyParseTab[yyS.yys[yyp]]
 				if yyError < len(row) {
 					yyn = int(row[yyError]) + yyTabOfs
 					if yyn > 0 { // hit
 						if yyDebug >= 2 {
-							__yyfmt__.Printf("error recovery found error shift in state %d\n", yyS[yyp].yys)
+							__yyfmt__.Printf("error recovery found error shift in state %d\n", yyS.yys[yyp])
 						}
 						yystate = yyn /* simulate a shift of "error" */
 						goto yystack
@@ -8099,7 +8097,7 @@ yynewstate:
 
 				/* the current p has no shift on "error", pop stack */
 				if yyDebug >= 2 {
-					__yyfmt__.Printf("error recovery pops state %d\n", yyS[yyp].yys)
+					__yyfmt__.Printf("error recovery pops state %d\n", yyS.yys[yyp])
 				}
 				yyp--
 			}
@@ -8129,17 +8127,14 @@ yynewstate:
 	_ = yypt // guard against "declared and not used"
 
 	yyp -= n
-	if yyp+1 >= len(yyS) {
-		nyys := make([]yySymType, len(yyS)*2)
-		copy(nyys, yyS)
-		yyS = nyys
-		parser.cache = yyS
+	if yyp+1 >= yyS.Len() {
+		yyS.Grow()
 	}
-	parser.yyVAL = yyS[yyp+1]
+	yyS.Get(yyp+1, &yyVAL)
 
 	/* consult goto table to find next state */
 	exState := yystate
-	yystate = int(yyParseTab[yyS[yyp].yys][x]) + yyTabOfs
+	yystate = int(yyParseTab[yyS.yys[yyp]][x]) + yyTabOfs
 	/* reduction by production r */
 	if yyDebug >= 2 {
 		__yyfmt__.Printf("reduce using rule %v (%s), and goto state %d\n", r, yySymNames[x], yystate)
@@ -8148,44 +8143,50 @@ yynewstate:
 	switch r {
 	case 2:
 		{
-			specs := yyS[yypt-1].item.([]*ast.AlterTableSpec)
-			if yyS[yypt-0].item != nil {
-				specs = append(specs, yyS[yypt-0].item.(*ast.AlterTableSpec))
+			specs := yyS.item[yypt-1].([]*ast.AlterTableSpec)
+			if yyS.item[yypt-0] != nil {
+				specs = append(specs, yyS.item[yypt-0].(*ast.AlterTableSpec))
 			}
-			parser.yyVAL.statement = &ast.AlterTableStmt{
-				Table: yyS[yypt-2].item.(*ast.TableName),
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.AlterTableStmt{
+				Table: yyS.item[yypt-2].(*ast.TableName),
 				Specs: specs,
 			}
 		}
 	case 3:
 		{
-			parser.yyVAL.statement = &ast.AnalyzeTableStmt{TableNames: []*ast.TableName{yyS[yypt-4].item.(*ast.TableName)}, PartitionNames: yyS[yypt-1].item.([]model.CIStr), AnalyzeOpts: yyS[yypt-0].item.([]ast.AnalyzeOpt)}
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.AnalyzeTableStmt{TableNames: []*ast.TableName{yyS.item[yypt-4].(*ast.TableName)}, PartitionNames: yyS.item[yypt-1].([]model.CIStr), AnalyzeOpts: yyS.item[yypt-0].([]ast.AnalyzeOpt)}
 		}
 	case 4:
 		{
-			parser.yyVAL.statement = &ast.AnalyzeTableStmt{
-				TableNames:     []*ast.TableName{yyS[yypt-6].item.(*ast.TableName)},
-				PartitionNames: yyS[yypt-3].item.([]model.CIStr),
-				IndexNames:     yyS[yypt-1].item.([]model.CIStr),
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.AnalyzeTableStmt{
+				TableNames:     []*ast.TableName{yyS.item[yypt-6].(*ast.TableName)},
+				PartitionNames: yyS.item[yypt-3].([]model.CIStr),
+				IndexNames:     yyS.item[yypt-1].([]model.CIStr),
 				IndexFlag:      true,
-				AnalyzeOpts:    yyS[yypt-0].item.([]ast.AnalyzeOpt),
+				AnalyzeOpts:    yyS.item[yypt-0].([]ast.AnalyzeOpt),
 			}
 		}
 	case 5:
 		{
-			if yyS[yypt-0].item != nil {
-				parser.yyVAL.item = &ast.AlterTableSpec{
+			if yyS.item[yypt-0] != nil {
+				yyVAL.typ = itemType
+				yyVAL.item = &ast.AlterTableSpec{
 					Tp:        ast.AlterTablePartition,
-					Partition: yyS[yypt-0].item.(*ast.PartitionOptions),
+					Partition: yyS.item[yypt-0].(*ast.PartitionOptions),
 				}
 			} else {
-				parser.yyVAL.item = nil
+				yyVAL.typ = itemType
+				yyVAL.item = nil
 			}
 
 		}
 	case 6:
 		{
-			parser.yyVAL.item = &ast.AlterTableSpec{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.AlterTableSpec{
 				Tp: ast.AlterTableRemovePartitioning,
 			}
 			yylex.AppendError(yylex.Errorf("The REMOVE PARTITIONING clause is parsed but ignored by all storage engines."))
@@ -8193,43 +8194,48 @@ yynewstate:
 		}
 	case 7:
 		{
-			parser.yyVAL.item = &ast.AlterTableSpec{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.AlterTableSpec{
 				Tp:      ast.AlterTableOption,
-				Options: yyS[yypt-0].item.([]*ast.TableOption),
+				Options: yyS.item[yypt-0].([]*ast.TableOption),
 			}
 		}
 	case 8:
 		{
 			op := &ast.AlterTableSpec{
 				Tp:      ast.AlterTableOption,
-				Options: []*ast.TableOption{{Tp: ast.TableOptionCharset, StrValue: yyS[yypt-1].item.(string)}},
+				Options: []*ast.TableOption{{Tp: ast.TableOptionCharset, StrValue: yyS.item[yypt-1].(string)}},
 			}
-			if yyS[yypt-0].item != "" {
-				op.Options = append(op.Options, &ast.TableOption{Tp: ast.TableOptionCollate, StrValue: yyS[yypt-0].item.(string)})
+			if yyS.item[yypt-0] != "" {
+				op.Options = append(op.Options, &ast.TableOption{Tp: ast.TableOptionCollate, StrValue: yyS.item[yypt-0].(string)})
 			}
-			parser.yyVAL.item = op
+			yyVAL.typ = itemType
+			yyVAL.item = op
 		}
 	case 9:
 		{
-			parser.yyVAL.item = &ast.AlterTableSpec{
-				IfNotExists: yyS[yypt-2].item.(bool),
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.AlterTableSpec{
+				IfNotExists: yyS.item[yypt-2].(bool),
 				Tp:          ast.AlterTableAddColumns,
-				NewColumns:  []*ast.ColumnDef{yyS[yypt-1].item.(*ast.ColumnDef)},
-				Position:    yyS[yypt-0].item.(*ast.ColumnPosition),
+				NewColumns:  []*ast.ColumnDef{yyS.item[yypt-1].(*ast.ColumnDef)},
+				Position:    yyS.item[yypt-0].(*ast.ColumnPosition),
 			}
 		}
 	case 10:
 		{
-			parser.yyVAL.item = &ast.AlterTableSpec{
-				IfNotExists: yyS[yypt-3].item.(bool),
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.AlterTableSpec{
+				IfNotExists: yyS.item[yypt-3].(bool),
 				Tp:          ast.AlterTableAddColumns,
-				NewColumns:  yyS[yypt-1].item.([]*ast.ColumnDef),
+				NewColumns:  yyS.item[yypt-1].([]*ast.ColumnDef),
 			}
 		}
 	case 11:
 		{
-			constraint := yyS[yypt-0].item.(*ast.Constraint)
-			parser.yyVAL.item = &ast.AlterTableSpec{
+			constraint := yyS.item[yypt-0].(*ast.Constraint)
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.AlterTableSpec{
 				Tp:         ast.AlterTableAddConstraint,
 				Constraint: constraint,
 			}
@@ -8237,123 +8243,138 @@ yynewstate:
 	case 12:
 		{
 			var defs []*ast.PartitionDefinition
-			if yyS[yypt-0].item != nil {
-				defs = yyS[yypt-0].item.([]*ast.PartitionDefinition)
+			if yyS.item[yypt-0] != nil {
+				defs = yyS.item[yypt-0].([]*ast.PartitionDefinition)
 			}
-			parser.yyVAL.item = &ast.AlterTableSpec{
-				IfNotExists:     yyS[yypt-1].item.(bool),
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.AlterTableSpec{
+				IfNotExists:     yyS.item[yypt-1].(bool),
 				Tp:              ast.AlterTableAddPartitions,
 				PartDefinitions: defs,
 			}
 		}
 	case 13:
 		{
-			parser.yyVAL.item = &ast.AlterTableSpec{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.AlterTableSpec{
 				Tp:  ast.AlterTableAddPartitions,
-				Num: getUint64FromNUM(yyS[yypt-0].item),
+				Num: getUint64FromNUM(yyS.item[yypt-0]),
 			}
 		}
 	case 14:
 		{
-			parser.yyVAL.item = &ast.AlterTableSpec{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.AlterTableSpec{
 				Tp:  ast.AlterTableCoalescePartitions,
-				Num: getUint64FromNUM(yyS[yypt-0].item),
+				Num: getUint64FromNUM(yyS.item[yypt-0]),
 			}
 		}
 	case 15:
 		{
-			parser.yyVAL.item = &ast.AlterTableSpec{
-				IfExists:      yyS[yypt-2].item.(bool),
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.AlterTableSpec{
+				IfExists:      yyS.item[yypt-2].(bool),
 				Tp:            ast.AlterTableDropColumn,
-				OldColumnName: yyS[yypt-1].item.(*ast.ColumnName),
+				OldColumnName: yyS.item[yypt-1].(*ast.ColumnName),
 			}
 		}
 	case 16:
 		{
-			parser.yyVAL.item = &ast.AlterTableSpec{Tp: ast.AlterTableDropPrimaryKey}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.AlterTableSpec{Tp: ast.AlterTableDropPrimaryKey}
 		}
 	case 17:
 		{
-			parser.yyVAL.item = &ast.AlterTableSpec{
-				IfExists:       yyS[yypt-1].item.(bool),
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.AlterTableSpec{
+				IfExists:       yyS.item[yypt-1].(bool),
 				Tp:             ast.AlterTableDropPartition,
-				PartitionNames: yyS[yypt-0].item.([]model.CIStr),
+				PartitionNames: yyS.item[yypt-0].([]model.CIStr),
 			}
 		}
 	case 18:
 		{
-			parser.yyVAL.item = &ast.AlterTableSpec{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.AlterTableSpec{
 				Tp:             ast.AlterTableTruncatePartition,
-				PartitionNames: yyS[yypt-0].item.([]model.CIStr),
+				PartitionNames: yyS.item[yypt-0].([]model.CIStr),
 			}
 		}
 	case 19:
 		{
-			parser.yyVAL.item = &ast.AlterTableSpec{
-				IfExists: yyS[yypt-1].item.(bool),
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.AlterTableSpec{
+				IfExists: yyS.item[yypt-1].(bool),
 				Tp:       ast.AlterTableDropIndex,
-				Name:     yyS[yypt-0].ident,
+				Name:     yyS.ident[yypt-0],
 			}
 		}
 	case 20:
 		{
-			parser.yyVAL.item = &ast.AlterTableSpec{
-				IfExists: yyS[yypt-1].item.(bool),
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.AlterTableSpec{
+				IfExists: yyS.item[yypt-1].(bool),
 				Tp:       ast.AlterTableDropForeignKey,
-				Name:     yyS[yypt-0].item.(string),
+				Name:     yyS.item[yypt-0].(string),
 			}
 		}
 	case 21:
 		{
-			parser.yyVAL.item = &ast.AlterTableSpec{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.AlterTableSpec{
 				Tp: ast.AlterTableDisableKeys,
 			}
 		}
 	case 22:
 		{
-			parser.yyVAL.item = &ast.AlterTableSpec{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.AlterTableSpec{
 				Tp: ast.AlterTableEnableKeys,
 			}
 		}
 	case 23:
 		{
-			parser.yyVAL.item = &ast.AlterTableSpec{
-				IfExists:   yyS[yypt-2].item.(bool),
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.AlterTableSpec{
+				IfExists:   yyS.item[yypt-2].(bool),
 				Tp:         ast.AlterTableModifyColumn,
-				NewColumns: []*ast.ColumnDef{yyS[yypt-1].item.(*ast.ColumnDef)},
-				Position:   yyS[yypt-0].item.(*ast.ColumnPosition),
+				NewColumns: []*ast.ColumnDef{yyS.item[yypt-1].(*ast.ColumnDef)},
+				Position:   yyS.item[yypt-0].(*ast.ColumnPosition),
 			}
 		}
 	case 24:
 		{
-			parser.yyVAL.item = &ast.AlterTableSpec{
-				IfExists:      yyS[yypt-3].item.(bool),
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.AlterTableSpec{
+				IfExists:      yyS.item[yypt-3].(bool),
 				Tp:            ast.AlterTableChangeColumn,
-				OldColumnName: yyS[yypt-2].item.(*ast.ColumnName),
-				NewColumns:    []*ast.ColumnDef{yyS[yypt-1].item.(*ast.ColumnDef)},
-				Position:      yyS[yypt-0].item.(*ast.ColumnPosition),
+				OldColumnName: yyS.item[yypt-2].(*ast.ColumnName),
+				NewColumns:    []*ast.ColumnDef{yyS.item[yypt-1].(*ast.ColumnDef)},
+				Position:      yyS.item[yypt-0].(*ast.ColumnPosition),
 			}
 		}
 	case 25:
 		{
-			option := &ast.ColumnOption{Expr: yyS[yypt-0].expr}
+			option := &ast.ColumnOption{Expr: yyS.expr[yypt-0]}
 			colDef := &ast.ColumnDef{
-				Name:    yyS[yypt-3].item.(*ast.ColumnName),
+				Name:    yyS.item[yypt-3].(*ast.ColumnName),
 				Options: []*ast.ColumnOption{option},
 			}
-			parser.yyVAL.item = &ast.AlterTableSpec{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.AlterTableSpec{
 				Tp:         ast.AlterTableAlterColumn,
 				NewColumns: []*ast.ColumnDef{colDef},
 			}
 		}
 	case 26:
 		{
-			option := &ast.ColumnOption{Expr: yyS[yypt-1].expr}
+			option := &ast.ColumnOption{Expr: yyS.expr[yypt-1]}
 			colDef := &ast.ColumnDef{
-				Name:    yyS[yypt-5].item.(*ast.ColumnName),
+				Name:    yyS.item[yypt-5].(*ast.ColumnName),
 				Options: []*ast.ColumnOption{option},
 			}
-			parser.yyVAL.item = &ast.AlterTableSpec{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.AlterTableSpec{
 				Tp:         ast.AlterTableAlterColumn,
 				NewColumns: []*ast.ColumnDef{colDef},
 			}
@@ -8361,492 +8382,591 @@ yynewstate:
 	case 27:
 		{
 			colDef := &ast.ColumnDef{
-				Name: yyS[yypt-2].item.(*ast.ColumnName),
+				Name: yyS.item[yypt-2].(*ast.ColumnName),
 			}
-			parser.yyVAL.item = &ast.AlterTableSpec{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.AlterTableSpec{
 				Tp:         ast.AlterTableAlterColumn,
 				NewColumns: []*ast.ColumnDef{colDef},
 			}
 		}
 	case 28:
 		{
-			parser.yyVAL.item = &ast.AlterTableSpec{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.AlterTableSpec{
 				Tp:       ast.AlterTableRenameTable,
-				NewTable: yyS[yypt-0].item.(*ast.TableName),
+				NewTable: yyS.item[yypt-0].(*ast.TableName),
 			}
 		}
 	case 29:
 		{
-			parser.yyVAL.item = &ast.AlterTableSpec{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.AlterTableSpec{
 				Tp:       ast.AlterTableRenameTable,
-				NewTable: yyS[yypt-0].item.(*ast.TableName),
+				NewTable: yyS.item[yypt-0].(*ast.TableName),
 			}
 		}
 	case 30:
 		{
-			parser.yyVAL.item = &ast.AlterTableSpec{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.AlterTableSpec{
 				Tp:       ast.AlterTableRenameTable,
-				NewTable: yyS[yypt-0].item.(*ast.TableName),
+				NewTable: yyS.item[yypt-0].(*ast.TableName),
 			}
 		}
 	case 31:
 		{
-			parser.yyVAL.item = &ast.AlterTableSpec{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.AlterTableSpec{
 				Tp:      ast.AlterTableRenameIndex,
-				FromKey: model.NewCIStr(yyS[yypt-2].ident),
-				ToKey:   model.NewCIStr(yyS[yypt-0].ident),
+				FromKey: model.NewCIStr(yyS.ident[yypt-2]),
+				ToKey:   model.NewCIStr(yyS.ident[yypt-0]),
 			}
 		}
 	case 32:
 		{
-			parser.yyVAL.item = &ast.AlterTableSpec{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.AlterTableSpec{
 				Tp:       ast.AlterTableLock,
-				LockType: yyS[yypt-0].item.(ast.LockType),
+				LockType: yyS.item[yypt-0].(ast.LockType),
 			}
 		}
 	case 33:
 		{
 			// Parse it and ignore it. Just for compatibility.
-			parser.yyVAL.item = &ast.AlterTableSpec{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.AlterTableSpec{
 				Tp:        ast.AlterTableAlgorithm,
-				Algorithm: yyS[yypt-0].item.(ast.AlterAlgorithm),
+				Algorithm: yyS.item[yypt-0].(ast.AlterAlgorithm),
 			}
 		}
 	case 34:
 		{
 			// Parse it and ignore it. Just for compatibility.
-			parser.yyVAL.item = &ast.AlterTableSpec{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.AlterTableSpec{
 				Tp: ast.AlterTableForce,
 			}
 		}
 	case 35:
 		{
-			parser.yyVAL.item = ast.AlterAlgorithmDefault
+			yyVAL.typ = itemType
+			yyVAL.item = ast.AlterAlgorithmDefault
 		}
 	case 36:
 		{
-			parser.yyVAL.item = ast.AlterAlgorithmCopy
+			yyVAL.typ = itemType
+			yyVAL.item = ast.AlterAlgorithmCopy
 		}
 	case 37:
 		{
-			parser.yyVAL.item = ast.AlterAlgorithmInplace
+			yyVAL.typ = itemType
+			yyVAL.item = ast.AlterAlgorithmInplace
 		}
 	case 38:
 		{
-			parser.yyVAL.item = ast.AlterAlgorithmInstant
+			yyVAL.typ = itemType
+			yyVAL.item = ast.AlterAlgorithmInstant
 		}
 	case 39:
 		{
-			yylex.AppendError(ErrUnknownAlterAlgorithm.GenWithStackByArgs(yyS[yypt-0].ident))
+			yylex.AppendError(ErrUnknownAlterAlgorithm.GenWithStackByArgs(yyS.ident[yypt-0]))
 			return 1
 		}
 	case 42:
 		{
-			parser.yyVAL.item = ast.LockTypeNone
+			yyVAL.typ = itemType
+			yyVAL.item = ast.LockTypeNone
 		}
 	case 43:
 		{
-			parser.yyVAL.item = ast.LockTypeDefault
+			yyVAL.typ = itemType
+			yyVAL.item = ast.LockTypeDefault
 		}
 	case 44:
 		{
-			parser.yyVAL.item = ast.LockTypeShared
+			yyVAL.typ = itemType
+			yyVAL.item = ast.LockTypeShared
 		}
 	case 45:
 		{
-			parser.yyVAL.item = ast.LockTypeExclusive
+			yyVAL.typ = itemType
+			yyVAL.item = ast.LockTypeExclusive
 		}
 	case 46:
 		{
-			yylex.AppendError(ErrUnknownAlterLock.GenWithStackByArgs(yyS[yypt-0].ident))
+			yylex.AppendError(ErrUnknownAlterLock.GenWithStackByArgs(yyS.ident[yypt-0]))
 			return 1
 		}
 	case 53:
 		{
-			parser.yyVAL.item = &ast.ColumnPosition{Tp: ast.ColumnPositionNone}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ColumnPosition{Tp: ast.ColumnPositionNone}
 		}
 	case 54:
 		{
-			parser.yyVAL.item = &ast.ColumnPosition{Tp: ast.ColumnPositionFirst}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ColumnPosition{Tp: ast.ColumnPositionFirst}
 		}
 	case 55:
 		{
-			parser.yyVAL.item = &ast.ColumnPosition{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ColumnPosition{
 				Tp:             ast.ColumnPositionAfter,
-				RelativeColumn: yyS[yypt-0].item.(*ast.ColumnName),
+				RelativeColumn: yyS.item[yypt-0].(*ast.ColumnName),
 			}
 		}
 	case 56:
 		{
-			parser.yyVAL.item = make([]*ast.AlterTableSpec, 0, 1)
+			yyVAL.typ = itemType
+			yyVAL.item = make([]*ast.AlterTableSpec, 0, 1)
 		}
 	case 57:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0]
 		}
 	case 58:
 		{
-			parser.yyVAL.item = []*ast.AlterTableSpec{yyS[yypt-0].item.(*ast.AlterTableSpec)}
+			yyVAL.typ = itemType
+			yyVAL.item = []*ast.AlterTableSpec{yyS.item[yypt-0].(*ast.AlterTableSpec)}
 		}
 	case 59:
 		{
-			parser.yyVAL.item = append(yyS[yypt-2].item.([]*ast.AlterTableSpec), yyS[yypt-0].item.(*ast.AlterTableSpec))
+			yyVAL.typ = itemType
+			yyVAL.item = append(yyS.item[yypt-2].([]*ast.AlterTableSpec), yyS.item[yypt-0].(*ast.AlterTableSpec))
 		}
 	case 60:
 		{
-			parser.yyVAL.item = []model.CIStr{model.NewCIStr(yyS[yypt-0].ident)}
+			yyVAL.typ = itemType
+			yyVAL.item = []model.CIStr{model.NewCIStr(yyS.ident[yypt-0])}
 		}
 	case 61:
 		{
-			parser.yyVAL.item = append(yyS[yypt-2].item.([]model.CIStr), model.NewCIStr(yyS[yypt-0].ident))
+			yyVAL.typ = itemType
+			yyVAL.item = append(yyS.item[yypt-2].([]model.CIStr), model.NewCIStr(yyS.ident[yypt-0]))
 		}
 	case 62:
 		{
-			parser.yyVAL.item = nil
+			yyVAL.typ = itemType
+			yyVAL.item = nil
 		}
 	case 63:
 		{
-			parser.yyVAL.item = nil
+			yyVAL.typ = itemType
+			yyVAL.item = nil
 		}
 	case 64:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item.(string)
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0].(string)
 		}
 	case 65:
 		{
-			parser.yyVAL.item = yyS[yypt-0].ident
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.ident[yypt-0]
 		}
 	case 66:
 		{
-			parser.yyVAL.statement = &ast.RenameTableStmt{
-				OldTable:      yyS[yypt-0].item.([]*ast.TableToTable)[0].OldTable,
-				NewTable:      yyS[yypt-0].item.([]*ast.TableToTable)[0].NewTable,
-				TableToTables: yyS[yypt-0].item.([]*ast.TableToTable),
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.RenameTableStmt{
+				OldTable:      yyS.item[yypt-0].([]*ast.TableToTable)[0].OldTable,
+				NewTable:      yyS.item[yypt-0].([]*ast.TableToTable)[0].NewTable,
+				TableToTables: yyS.item[yypt-0].([]*ast.TableToTable),
 			}
 		}
 	case 67:
 		{
-			parser.yyVAL.item = []*ast.TableToTable{yyS[yypt-0].item.(*ast.TableToTable)}
+			yyVAL.typ = itemType
+			yyVAL.item = []*ast.TableToTable{yyS.item[yypt-0].(*ast.TableToTable)}
 		}
 	case 68:
 		{
-			parser.yyVAL.item = append(yyS[yypt-2].item.([]*ast.TableToTable), yyS[yypt-0].item.(*ast.TableToTable))
+			yyVAL.typ = itemType
+			yyVAL.item = append(yyS.item[yypt-2].([]*ast.TableToTable), yyS.item[yypt-0].(*ast.TableToTable))
 		}
 	case 69:
 		{
-			parser.yyVAL.item = &ast.TableToTable{
-				OldTable: yyS[yypt-2].item.(*ast.TableName),
-				NewTable: yyS[yypt-0].item.(*ast.TableName),
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TableToTable{
+				OldTable: yyS.item[yypt-2].(*ast.TableName),
+				NewTable: yyS.item[yypt-0].(*ast.TableName),
 			}
 		}
 	case 70:
 		{
-			parser.yyVAL.statement = &ast.RecoverTableStmt{
-				JobID: yyS[yypt-0].item.(int64),
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.RecoverTableStmt{
+				JobID: yyS.item[yypt-0].(int64),
 			}
 		}
 	case 71:
 		{
-			parser.yyVAL.statement = &ast.RecoverTableStmt{
-				Table: yyS[yypt-0].item.(*ast.TableName),
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.RecoverTableStmt{
+				Table: yyS.item[yypt-0].(*ast.TableName),
 			}
 		}
 	case 72:
 		{
-			parser.yyVAL.statement = &ast.RecoverTableStmt{
-				Table:  yyS[yypt-1].item.(*ast.TableName),
-				JobNum: yyS[yypt-0].item.(int64),
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.RecoverTableStmt{
+				Table:  yyS.item[yypt-1].(*ast.TableName),
+				JobNum: yyS.item[yypt-0].(int64),
 			}
 		}
 	case 73:
 		{
-			parser.yyVAL.statement = &ast.SplitRegionStmt{
-				Table:    yyS[yypt-1].item.(*ast.TableName),
-				SplitOpt: yyS[yypt-0].item.(*ast.SplitOption),
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.SplitRegionStmt{
+				Table:    yyS.item[yypt-1].(*ast.TableName),
+				SplitOpt: yyS.item[yypt-0].(*ast.SplitOption),
 			}
 		}
 	case 74:
 		{
-			parser.yyVAL.statement = &ast.SplitRegionStmt{
-				Table:     yyS[yypt-3].item.(*ast.TableName),
-				IndexName: model.NewCIStr(yyS[yypt-1].ident),
-				SplitOpt:  yyS[yypt-0].item.(*ast.SplitOption),
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.SplitRegionStmt{
+				Table:     yyS.item[yypt-3].(*ast.TableName),
+				IndexName: model.NewCIStr(yyS.ident[yypt-1]),
+				SplitOpt:  yyS.item[yypt-0].(*ast.SplitOption),
 			}
 		}
 	case 75:
 		{
-			parser.yyVAL.item = &ast.SplitOption{
-				Lower: yyS[yypt-4].item.([]ast.ExprNode),
-				Upper: yyS[yypt-2].item.([]ast.ExprNode),
-				Num:   yyS[yypt-0].item.(int64),
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.SplitOption{
+				Lower: yyS.item[yypt-4].([]ast.ExprNode),
+				Upper: yyS.item[yypt-2].([]ast.ExprNode),
+				Num:   yyS.item[yypt-0].(int64),
 			}
 		}
 	case 76:
 		{
-			parser.yyVAL.item = &ast.SplitOption{
-				ValueLists: yyS[yypt-0].item.([][]ast.ExprNode),
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.SplitOption{
+				ValueLists: yyS.item[yypt-0].([][]ast.ExprNode),
 			}
 		}
 	case 77:
 		{
-			parser.yyVAL.statement = &ast.AnalyzeTableStmt{TableNames: yyS[yypt-1].item.([]*ast.TableName), AnalyzeOpts: yyS[yypt-0].item.([]ast.AnalyzeOpt)}
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.AnalyzeTableStmt{TableNames: yyS.item[yypt-1].([]*ast.TableName), AnalyzeOpts: yyS.item[yypt-0].([]ast.AnalyzeOpt)}
 		}
 	case 78:
 		{
-			parser.yyVAL.statement = &ast.AnalyzeTableStmt{TableNames: []*ast.TableName{yyS[yypt-3].item.(*ast.TableName)}, IndexNames: yyS[yypt-1].item.([]model.CIStr), IndexFlag: true, AnalyzeOpts: yyS[yypt-0].item.([]ast.AnalyzeOpt)}
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.AnalyzeTableStmt{TableNames: []*ast.TableName{yyS.item[yypt-3].(*ast.TableName)}, IndexNames: yyS.item[yypt-1].([]model.CIStr), IndexFlag: true, AnalyzeOpts: yyS.item[yypt-0].([]ast.AnalyzeOpt)}
 		}
 	case 79:
 		{
-			parser.yyVAL.statement = &ast.AnalyzeTableStmt{TableNames: []*ast.TableName{yyS[yypt-3].item.(*ast.TableName)}, IndexNames: yyS[yypt-1].item.([]model.CIStr), IndexFlag: true, Incremental: true, AnalyzeOpts: yyS[yypt-0].item.([]ast.AnalyzeOpt)}
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.AnalyzeTableStmt{TableNames: []*ast.TableName{yyS.item[yypt-3].(*ast.TableName)}, IndexNames: yyS.item[yypt-1].([]model.CIStr), IndexFlag: true, Incremental: true, AnalyzeOpts: yyS.item[yypt-0].([]ast.AnalyzeOpt)}
 		}
 	case 80:
 		{
-			parser.yyVAL.statement = &ast.AnalyzeTableStmt{TableNames: []*ast.TableName{yyS[yypt-3].item.(*ast.TableName)}, PartitionNames: yyS[yypt-1].item.([]model.CIStr), AnalyzeOpts: yyS[yypt-0].item.([]ast.AnalyzeOpt)}
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.AnalyzeTableStmt{TableNames: []*ast.TableName{yyS.item[yypt-3].(*ast.TableName)}, PartitionNames: yyS.item[yypt-1].([]model.CIStr), AnalyzeOpts: yyS.item[yypt-0].([]ast.AnalyzeOpt)}
 		}
 	case 81:
 		{
-			parser.yyVAL.statement = &ast.AnalyzeTableStmt{
-				TableNames:     []*ast.TableName{yyS[yypt-5].item.(*ast.TableName)},
-				PartitionNames: yyS[yypt-3].item.([]model.CIStr),
-				IndexNames:     yyS[yypt-1].item.([]model.CIStr),
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.AnalyzeTableStmt{
+				TableNames:     []*ast.TableName{yyS.item[yypt-5].(*ast.TableName)},
+				PartitionNames: yyS.item[yypt-3].([]model.CIStr),
+				IndexNames:     yyS.item[yypt-1].([]model.CIStr),
 				IndexFlag:      true,
-				AnalyzeOpts:    yyS[yypt-0].item.([]ast.AnalyzeOpt),
+				AnalyzeOpts:    yyS.item[yypt-0].([]ast.AnalyzeOpt),
 			}
 		}
 	case 82:
 		{
-			parser.yyVAL.statement = &ast.AnalyzeTableStmt{
-				TableNames:     []*ast.TableName{yyS[yypt-5].item.(*ast.TableName)},
-				PartitionNames: yyS[yypt-3].item.([]model.CIStr),
-				IndexNames:     yyS[yypt-1].item.([]model.CIStr),
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.AnalyzeTableStmt{
+				TableNames:     []*ast.TableName{yyS.item[yypt-5].(*ast.TableName)},
+				PartitionNames: yyS.item[yypt-3].([]model.CIStr),
+				IndexNames:     yyS.item[yypt-1].([]model.CIStr),
 				IndexFlag:      true,
 				Incremental:    true,
-				AnalyzeOpts:    yyS[yypt-0].item.([]ast.AnalyzeOpt),
+				AnalyzeOpts:    yyS.item[yypt-0].([]ast.AnalyzeOpt),
 			}
 		}
 	case 83:
 		{
-			parser.yyVAL.item = []ast.AnalyzeOpt{}
+			yyVAL.typ = itemType
+			yyVAL.item = []ast.AnalyzeOpt{}
 		}
 	case 84:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item.([]ast.AnalyzeOpt)
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0].([]ast.AnalyzeOpt)
 		}
 	case 85:
 		{
-			parser.yyVAL.item = []ast.AnalyzeOpt{yyS[yypt-0].item.(ast.AnalyzeOpt)}
+			yyVAL.typ = itemType
+			yyVAL.item = []ast.AnalyzeOpt{yyS.item[yypt-0].(ast.AnalyzeOpt)}
 		}
 	case 86:
 		{
-			parser.yyVAL.item = append(yyS[yypt-2].item.([]ast.AnalyzeOpt), yyS[yypt-0].item.(ast.AnalyzeOpt))
+			yyVAL.typ = itemType
+			yyVAL.item = append(yyS.item[yypt-2].([]ast.AnalyzeOpt), yyS.item[yypt-0].(ast.AnalyzeOpt))
 		}
 	case 87:
 		{
-			parser.yyVAL.item = ast.AnalyzeOpt{Type: ast.AnalyzeOptNumBuckets, Value: getUint64FromNUM(yyS[yypt-1].item)}
+			yyVAL.typ = itemType
+			yyVAL.item = ast.AnalyzeOpt{Type: ast.AnalyzeOptNumBuckets, Value: getUint64FromNUM(yyS.item[yypt-1])}
 		}
 	case 88:
 		{
-			parser.yyVAL.item = ast.AnalyzeOpt{Type: ast.AnalyzeOptNumTopN, Value: getUint64FromNUM(yyS[yypt-1].item)}
+			yyVAL.typ = itemType
+			yyVAL.item = ast.AnalyzeOpt{Type: ast.AnalyzeOptNumTopN, Value: getUint64FromNUM(yyS.item[yypt-1])}
 		}
 	case 89:
 		{
-			parser.yyVAL.item = ast.AnalyzeOpt{Type: ast.AnalyzeOptCMSketchDepth, Value: getUint64FromNUM(yyS[yypt-2].item)}
+			yyVAL.typ = itemType
+			yyVAL.item = ast.AnalyzeOpt{Type: ast.AnalyzeOptCMSketchDepth, Value: getUint64FromNUM(yyS.item[yypt-2])}
 		}
 	case 90:
 		{
-			parser.yyVAL.item = ast.AnalyzeOpt{Type: ast.AnalyzeOptCMSketchWidth, Value: getUint64FromNUM(yyS[yypt-2].item)}
+			yyVAL.typ = itemType
+			yyVAL.item = ast.AnalyzeOpt{Type: ast.AnalyzeOptCMSketchWidth, Value: getUint64FromNUM(yyS.item[yypt-2])}
 		}
 	case 91:
 		{
-			parser.yyVAL.item = &ast.Assignment{Column: yyS[yypt-2].item.(*ast.ColumnName), Expr: yyS[yypt-0].expr}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.Assignment{Column: yyS.item[yypt-2].(*ast.ColumnName), Expr: yyS.expr[yypt-0]}
 		}
 	case 92:
 		{
-			parser.yyVAL.item = []*ast.Assignment{yyS[yypt-0].item.(*ast.Assignment)}
+			yyVAL.typ = itemType
+			yyVAL.item = []*ast.Assignment{yyS.item[yypt-0].(*ast.Assignment)}
 		}
 	case 93:
 		{
-			parser.yyVAL.item = append(yyS[yypt-2].item.([]*ast.Assignment), yyS[yypt-0].item.(*ast.Assignment))
+			yyVAL.typ = itemType
+			yyVAL.item = append(yyS.item[yypt-2].([]*ast.Assignment), yyS.item[yypt-0].(*ast.Assignment))
 		}
 	case 94:
 		{
-			parser.yyVAL.item = []*ast.Assignment{}
+			yyVAL.typ = itemType
+			yyVAL.item = []*ast.Assignment{}
 		}
 	case 96:
 		{
-			parser.yyVAL.statement = &ast.BeginStmt{}
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.BeginStmt{}
 		}
 	case 97:
 		{
-			parser.yyVAL.statement = &ast.BeginStmt{
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.BeginStmt{
 				Mode: ast.Pessimistic,
 			}
 		}
 	case 98:
 		{
-			parser.yyVAL.statement = &ast.BeginStmt{
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.BeginStmt{
 				Mode: ast.Optimistic,
 			}
 		}
 	case 99:
 		{
-			parser.yyVAL.statement = &ast.BeginStmt{}
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.BeginStmt{}
 		}
 	case 100:
 		{
-			parser.yyVAL.statement = &ast.BeginStmt{}
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.BeginStmt{}
 		}
 	case 101:
 		{
-			parser.yyVAL.statement = &ast.BinlogStmt{Str: yyS[yypt-0].ident}
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.BinlogStmt{Str: yyS.ident[yypt-0]}
 		}
 	case 102:
 		{
-			parser.yyVAL.item = []*ast.ColumnDef{yyS[yypt-0].item.(*ast.ColumnDef)}
+			yyVAL.typ = itemType
+			yyVAL.item = []*ast.ColumnDef{yyS.item[yypt-0].(*ast.ColumnDef)}
 		}
 	case 103:
 		{
-			parser.yyVAL.item = append(yyS[yypt-2].item.([]*ast.ColumnDef), yyS[yypt-0].item.(*ast.ColumnDef))
+			yyVAL.typ = itemType
+			yyVAL.item = append(yyS.item[yypt-2].([]*ast.ColumnDef), yyS.item[yypt-0].(*ast.ColumnDef))
 		}
 	case 104:
 		{
-			colDef := &ast.ColumnDef{Name: yyS[yypt-2].item.(*ast.ColumnName), Tp: yyS[yypt-1].item.(*types.FieldType), Options: yyS[yypt-0].item.([]*ast.ColumnOption)}
+			colDef := &ast.ColumnDef{Name: yyS.item[yypt-2].(*ast.ColumnName), Tp: yyS.item[yypt-1].(*types.FieldType), Options: yyS.item[yypt-0].([]*ast.ColumnOption)}
 			if !colDef.Validate() {
 				yylex.AppendError(yylex.Errorf("Invalid column definition"))
 				return 1
 			}
-			parser.yyVAL.item = colDef
+			yyVAL.typ = itemType
+			yyVAL.item = colDef
 		}
 	case 105:
 		{
-			parser.yyVAL.item = &ast.ColumnName{Name: model.NewCIStr(yyS[yypt-0].ident)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ColumnName{Name: model.NewCIStr(yyS.ident[yypt-0])}
 		}
 	case 106:
 		{
-			parser.yyVAL.item = &ast.ColumnName{Table: model.NewCIStr(yyS[yypt-2].ident), Name: model.NewCIStr(yyS[yypt-0].ident)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ColumnName{Table: model.NewCIStr(yyS.ident[yypt-2]), Name: model.NewCIStr(yyS.ident[yypt-0])}
 		}
 	case 107:
 		{
-			parser.yyVAL.item = &ast.ColumnName{Schema: model.NewCIStr(yyS[yypt-4].ident), Table: model.NewCIStr(yyS[yypt-2].ident), Name: model.NewCIStr(yyS[yypt-0].ident)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ColumnName{Schema: model.NewCIStr(yyS.ident[yypt-4]), Table: model.NewCIStr(yyS.ident[yypt-2]), Name: model.NewCIStr(yyS.ident[yypt-0])}
 		}
 	case 108:
 		{
-			parser.yyVAL.item = []*ast.ColumnName{yyS[yypt-0].item.(*ast.ColumnName)}
+			yyVAL.typ = itemType
+			yyVAL.item = []*ast.ColumnName{yyS.item[yypt-0].(*ast.ColumnName)}
 		}
 	case 109:
 		{
-			parser.yyVAL.item = append(yyS[yypt-2].item.([]*ast.ColumnName), yyS[yypt-0].item.(*ast.ColumnName))
+			yyVAL.typ = itemType
+			yyVAL.item = append(yyS.item[yypt-2].([]*ast.ColumnName), yyS.item[yypt-0].(*ast.ColumnName))
 		}
 	case 110:
 		{
-			parser.yyVAL.item = []*ast.ColumnName{}
+			yyVAL.typ = itemType
+			yyVAL.item = []*ast.ColumnName{}
 		}
 	case 111:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item.([]*ast.ColumnName)
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0].([]*ast.ColumnName)
 		}
 	case 112:
 		{
-			parser.yyVAL.item = []*ast.ColumnNameOrUserVar{}
+			yyVAL.typ = itemType
+			yyVAL.item = []*ast.ColumnNameOrUserVar{}
 		}
 	case 113:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item.([]*ast.ColumnNameOrUserVar)
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0].([]*ast.ColumnNameOrUserVar)
 		}
 	case 114:
 		{
-			parser.yyVAL.item = []*ast.ColumnNameOrUserVar{yyS[yypt-0].item.(*ast.ColumnNameOrUserVar)}
+			yyVAL.typ = itemType
+			yyVAL.item = []*ast.ColumnNameOrUserVar{yyS.item[yypt-0].(*ast.ColumnNameOrUserVar)}
 		}
 	case 115:
 		{
-			parser.yyVAL.item = append(yyS[yypt-2].item.([]*ast.ColumnNameOrUserVar), yyS[yypt-0].item.(*ast.ColumnNameOrUserVar))
+			yyVAL.typ = itemType
+			yyVAL.item = append(yyS.item[yypt-2].([]*ast.ColumnNameOrUserVar), yyS.item[yypt-0].(*ast.ColumnNameOrUserVar))
 		}
 	case 116:
 		{
-			parser.yyVAL.item = &ast.ColumnNameOrUserVar{ColumnName: yyS[yypt-0].item.(*ast.ColumnName)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ColumnNameOrUserVar{ColumnName: yyS.item[yypt-0].(*ast.ColumnName)}
 		}
 	case 117:
 		{
-			parser.yyVAL.item = &ast.ColumnNameOrUserVar{UserVar: yyS[yypt-0].expr.(*ast.VariableExpr)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ColumnNameOrUserVar{UserVar: yyS.expr[yypt-0].(*ast.VariableExpr)}
 		}
 	case 118:
 		{
-			parser.yyVAL.item = []*ast.ColumnNameOrUserVar{}
+			yyVAL.typ = itemType
+			yyVAL.item = []*ast.ColumnNameOrUserVar{}
 		}
 	case 119:
 		{
-			parser.yyVAL.item = yyS[yypt-1].item.([]*ast.ColumnNameOrUserVar)
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-1].([]*ast.ColumnNameOrUserVar)
 		}
 	case 120:
 		{
-			parser.yyVAL.statement = &ast.CommitStmt{}
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.CommitStmt{}
 		}
 	case 123:
 		{
-			parser.yyVAL.item = true
+			yyVAL.typ = itemType
+			yyVAL.item = true
 		}
 	case 124:
 		{
-			parser.yyVAL.item = false
+			yyVAL.typ = itemType
+			yyVAL.item = false
 		}
 	case 125:
 		{
-			parser.yyVAL.item = true
+			yyVAL.typ = itemType
+			yyVAL.item = true
 		}
 	case 126:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0]
 		}
 	case 127:
 		{
-			parser.yyVAL.item = 0
+			yyVAL.typ = itemType
+			yyVAL.item = 0
 		}
 	case 128:
 		{
-			if yyS[yypt-0].item.(bool) {
-				parser.yyVAL.item = 1
+			if yyS.item[yypt-0].(bool) {
+				yyVAL.typ = itemType
+				yyVAL.item = 1
 			} else {
-				parser.yyVAL.item = 2
+				yyVAL.typ = itemType
+				yyVAL.item = 2
 			}
 		}
 	case 129:
 		{
-			parser.yyVAL.item = &ast.ColumnOption{Tp: ast.ColumnOptionNotNull}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ColumnOption{Tp: ast.ColumnOptionNotNull}
 		}
 	case 130:
 		{
-			parser.yyVAL.item = &ast.ColumnOption{Tp: ast.ColumnOptionNull}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ColumnOption{Tp: ast.ColumnOptionNull}
 		}
 	case 131:
 		{
-			parser.yyVAL.item = &ast.ColumnOption{Tp: ast.ColumnOptionAutoIncrement}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ColumnOption{Tp: ast.ColumnOptionAutoIncrement}
 		}
 	case 132:
 		{
 			// KEY is normally a synonym for INDEX. The key attribute PRIMARY KEY
 			// can also be specified as just KEY when given in a column definition.
 			// See http://dev.mysql.com/doc/refman/5.7/en/create-table.html
-			parser.yyVAL.item = &ast.ColumnOption{Tp: ast.ColumnOptionPrimaryKey}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ColumnOption{Tp: ast.ColumnOptionPrimaryKey}
 		}
 	case 133:
 		{
-			parser.yyVAL.item = &ast.ColumnOption{Tp: ast.ColumnOptionUniqKey}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ColumnOption{Tp: ast.ColumnOptionUniqKey}
 		}
 	case 134:
 		{
-			parser.yyVAL.item = &ast.ColumnOption{Tp: ast.ColumnOptionUniqKey}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ColumnOption{Tp: ast.ColumnOptionUniqKey}
 		}
 	case 135:
 		{
-			parser.yyVAL.item = &ast.ColumnOption{Tp: ast.ColumnOptionDefaultValue, Expr: yyS[yypt-0].expr}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ColumnOption{Tp: ast.ColumnOptionDefaultValue, Expr: yyS.expr[yypt-0]}
 		}
 	case 136:
 		{
-			parser.yyVAL.item = &ast.ColumnOption{Tp: ast.ColumnOptionOnUpdate, Expr: yyS[yypt-0].expr}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ColumnOption{Tp: ast.ColumnOptionOnUpdate, Expr: yyS.expr[yypt-0]}
 		}
 	case 137:
 		{
-			parser.yyVAL.item = &ast.ColumnOption{Tp: ast.ColumnOptionComment, Expr: ast.NewValueExpr(yyS[yypt-0].ident)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ColumnOption{Tp: ast.ColumnOptionComment, Expr: ast.NewValueExpr(yyS.ident[yypt-0])}
 		}
 	case 138:
 		{
@@ -8856,18 +8976,21 @@ yynewstate:
 
 			optionCheck := &ast.ColumnOption{
 				Tp:       ast.ColumnOptionCheck,
-				Expr:     yyS[yypt-2].expr,
+				Expr:     yyS.expr[yypt-2],
 				Enforced: true,
 			}
-			switch yyS[yypt-0].item.(int) {
+			switch yyS.item[yypt-0].(int) {
 			case 0:
-				parser.yyVAL.item = []*ast.ColumnOption{optionCheck, {Tp: ast.ColumnOptionNotNull}}
+				yyVAL.typ = itemType
+				yyVAL.item = []*ast.ColumnOption{optionCheck, {Tp: ast.ColumnOptionNotNull}}
 			case 1:
 				optionCheck.Enforced = true
-				parser.yyVAL.item = optionCheck
+				yyVAL.typ = itemType
+				yyVAL.item = optionCheck
 			case 2:
 				optionCheck.Enforced = false
-				parser.yyVAL.item = optionCheck
+				yyVAL.typ = itemType
+				yyVAL.item = optionCheck
 			default:
 			}
 			yylex.AppendError(yylex.Errorf("The CHECK clause is parsed but ignored by all storage engines."))
@@ -8875,382 +8998,442 @@ yynewstate:
 		}
 	case 139:
 		{
-			startOffset := parser.startOffset(&yyS[yypt-2])
-			endOffset := parser.endOffset(&yyS[yypt-1])
-			expr := yyS[yypt-2].expr
+			startOffset := yyS.offset[yypt-2]
+			endOffset := yyS.offset[yypt-1]
+			expr := yyS.expr[yypt-2]
 			expr.SetText(parser.src[startOffset:endOffset])
 
-			parser.yyVAL.item = &ast.ColumnOption{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ColumnOption{
 				Tp:     ast.ColumnOptionGenerated,
 				Expr:   expr,
-				Stored: yyS[yypt-0].item.(bool),
+				Stored: yyS.item[yypt-0].(bool),
 			}
 		}
 	case 140:
 		{
-			parser.yyVAL.item = &ast.ColumnOption{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ColumnOption{
 				Tp:    ast.ColumnOptionReference,
-				Refer: yyS[yypt-0].item.(*ast.ReferenceDef),
+				Refer: yyS.item[yypt-0].(*ast.ReferenceDef),
 			}
 		}
 	case 141:
 		{
-			parser.yyVAL.item = &ast.ColumnOption{Tp: ast.ColumnOptionCollate, StrValue: yyS[yypt-0].item.(string)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ColumnOption{Tp: ast.ColumnOptionCollate, StrValue: yyS.item[yypt-0].(string)}
 		}
 	case 144:
 		{
-			parser.yyVAL.item = false
+			yyVAL.typ = itemType
+			yyVAL.item = false
 		}
 	case 145:
 		{
-			parser.yyVAL.item = false
+			yyVAL.typ = itemType
+			yyVAL.item = false
 		}
 	case 146:
 		{
-			parser.yyVAL.item = true
+			yyVAL.typ = itemType
+			yyVAL.item = true
 		}
 	case 147:
 		{
-			if columnOption, ok := yyS[yypt-0].item.(*ast.ColumnOption); ok {
-				parser.yyVAL.item = []*ast.ColumnOption{columnOption}
+			if columnOption, ok := yyS.item[yypt-0].(*ast.ColumnOption); ok {
+				yyVAL.typ = itemType
+				yyVAL.item = []*ast.ColumnOption{columnOption}
 			} else {
-				parser.yyVAL.item = yyS[yypt-0].item
+				yyVAL.typ = itemType
+				yyVAL.item = yyS.item[yypt-0]
 			}
 		}
 	case 148:
 		{
-			if columnOption, ok := yyS[yypt-0].item.(*ast.ColumnOption); ok {
-				parser.yyVAL.item = append(yyS[yypt-1].item.([]*ast.ColumnOption), columnOption)
+			if columnOption, ok := yyS.item[yypt-0].(*ast.ColumnOption); ok {
+				yyVAL.typ = itemType
+				yyVAL.item = append(yyS.item[yypt-1].([]*ast.ColumnOption), columnOption)
 			} else {
-				parser.yyVAL.item = append(yyS[yypt-1].item.([]*ast.ColumnOption), yyS[yypt-0].item.([]*ast.ColumnOption)...)
+				yyVAL.typ = itemType
+				yyVAL.item = append(yyS.item[yypt-1].([]*ast.ColumnOption), yyS.item[yypt-0].([]*ast.ColumnOption)...)
 			}
 		}
 	case 149:
 		{
-			parser.yyVAL.item = []*ast.ColumnOption{}
+			yyVAL.typ = itemType
+			yyVAL.item = []*ast.ColumnOption{}
 		}
 	case 150:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item.([]*ast.ColumnOption)
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0].([]*ast.ColumnOption)
 		}
 	case 151:
 		{
 			c := &ast.Constraint{
 				Tp:   ast.ConstraintPrimaryKey,
-				Keys: yyS[yypt-2].item.([]*ast.IndexColName),
+				Keys: yyS.item[yypt-2].([]*ast.IndexColName),
 			}
-			if yyS[yypt-0].item != nil {
-				c.Option = yyS[yypt-0].item.(*ast.IndexOption)
+			if yyS.item[yypt-0] != nil {
+				c.Option = yyS.item[yypt-0].(*ast.IndexOption)
 			}
-			if yyS[yypt-4].item != nil {
+			if yyS.item[yypt-4] != nil {
 				if c.Option == nil {
 					c.Option = &ast.IndexOption{}
 				}
-				c.Option.Tp = yyS[yypt-4].item.(model.IndexType)
+				c.Option.Tp = yyS.item[yypt-4].(model.IndexType)
 			}
-			parser.yyVAL.item = c
+			yyVAL.typ = itemType
+			yyVAL.item = c
 		}
 	case 152:
 		{
 			c := &ast.Constraint{
 				Tp:   ast.ConstraintFulltext,
-				Keys: yyS[yypt-2].item.([]*ast.IndexColName),
-				Name: yyS[yypt-4].item.(string),
+				Keys: yyS.item[yypt-2].([]*ast.IndexColName),
+				Name: yyS.item[yypt-4].(string),
 			}
-			if yyS[yypt-0].item != nil {
-				c.Option = yyS[yypt-0].item.(*ast.IndexOption)
+			if yyS.item[yypt-0] != nil {
+				c.Option = yyS.item[yypt-0].(*ast.IndexOption)
 			}
-			parser.yyVAL.item = c
+			yyVAL.typ = itemType
+			yyVAL.item = c
 		}
 	case 153:
 		{
 			c := &ast.Constraint{
-				IfNotExists: yyS[yypt-6].item.(bool),
+				IfNotExists: yyS.item[yypt-6].(bool),
 				Tp:          ast.ConstraintIndex,
-				Keys:        yyS[yypt-2].item.([]*ast.IndexColName),
-				Name:        yyS[yypt-5].item.(string),
+				Keys:        yyS.item[yypt-2].([]*ast.IndexColName),
+				Name:        yyS.item[yypt-5].(string),
 			}
-			if yyS[yypt-0].item != nil {
-				c.Option = yyS[yypt-0].item.(*ast.IndexOption)
+			if yyS.item[yypt-0] != nil {
+				c.Option = yyS.item[yypt-0].(*ast.IndexOption)
 			}
-			if yyS[yypt-4].item != nil {
+			if yyS.item[yypt-4] != nil {
 				if c.Option == nil {
 					c.Option = &ast.IndexOption{}
 				}
-				c.Option.Tp = yyS[yypt-4].item.(model.IndexType)
+				c.Option.Tp = yyS.item[yypt-4].(model.IndexType)
 			}
-			parser.yyVAL.item = c
+			yyVAL.typ = itemType
+			yyVAL.item = c
 		}
 	case 154:
 		{
 			c := &ast.Constraint{
 				Tp:   ast.ConstraintUniq,
-				Keys: yyS[yypt-2].item.([]*ast.IndexColName),
-				Name: yyS[yypt-5].item.(string),
+				Keys: yyS.item[yypt-2].([]*ast.IndexColName),
+				Name: yyS.item[yypt-5].(string),
 			}
-			if yyS[yypt-0].item != nil {
-				c.Option = yyS[yypt-0].item.(*ast.IndexOption)
+			if yyS.item[yypt-0] != nil {
+				c.Option = yyS.item[yypt-0].(*ast.IndexOption)
 			}
-			if yyS[yypt-4].item != nil {
+			if yyS.item[yypt-4] != nil {
 				if c.Option == nil {
 					c.Option = &ast.IndexOption{}
 				}
-				c.Option.Tp = yyS[yypt-4].item.(model.IndexType)
+				c.Option.Tp = yyS.item[yypt-4].(model.IndexType)
 			}
-			parser.yyVAL.item = c
+			yyVAL.typ = itemType
+			yyVAL.item = c
 		}
 	case 155:
 		{
-			parser.yyVAL.item = &ast.Constraint{
-				IfNotExists: yyS[yypt-5].item.(bool),
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.Constraint{
+				IfNotExists: yyS.item[yypt-5].(bool),
 				Tp:          ast.ConstraintForeignKey,
-				Keys:        yyS[yypt-2].item.([]*ast.IndexColName),
-				Name:        yyS[yypt-4].item.(string),
-				Refer:       yyS[yypt-0].item.(*ast.ReferenceDef),
+				Keys:        yyS.item[yypt-2].([]*ast.IndexColName),
+				Name:        yyS.item[yypt-4].(string),
+				Refer:       yyS.item[yypt-0].(*ast.ReferenceDef),
 			}
 		}
 	case 156:
 		{
-			parser.yyVAL.item = &ast.Constraint{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.Constraint{
 				Tp:       ast.ConstraintCheck,
-				Expr:     yyS[yypt-2].expr.(ast.ExprNode),
-				Enforced: yyS[yypt-0].item.(bool),
+				Expr:     yyS.expr[yypt-2].(ast.ExprNode),
+				Enforced: yyS.item[yypt-0].(bool),
 			}
 			yylex.AppendError(yylex.Errorf("The CHECK clause is parsed but ignored by all storage engines."))
 			parser.lastErrorAsWarn()
 		}
 	case 157:
 		{
-			parser.yyVAL.item = ast.MatchFull
+			yyVAL.typ = itemType
+			yyVAL.item = ast.MatchFull
 		}
 	case 158:
 		{
-			parser.yyVAL.item = ast.MatchPartial
+			yyVAL.typ = itemType
+			yyVAL.item = ast.MatchPartial
 		}
 	case 159:
 		{
-			parser.yyVAL.item = ast.MatchSimple
+			yyVAL.typ = itemType
+			yyVAL.item = ast.MatchSimple
 		}
 	case 160:
 		{
-			parser.yyVAL.item = ast.MatchNone
+			yyVAL.typ = itemType
+			yyVAL.item = ast.MatchNone
 		}
 	case 161:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0]
 			yylex.AppendError(yylex.Errorf("The MATCH clause is parsed but ignored by all storage engines."))
 			parser.lastErrorAsWarn()
 		}
 	case 162:
 		{
-			onDeleteUpdate := yyS[yypt-0].item.([2]interface{})
-			parser.yyVAL.item = &ast.ReferenceDef{
-				Table:         yyS[yypt-5].item.(*ast.TableName),
-				IndexColNames: yyS[yypt-3].item.([]*ast.IndexColName),
+			onDeleteUpdate := yyS.item[yypt-0].([2]interface{})
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ReferenceDef{
+				Table:         yyS.item[yypt-5].(*ast.TableName),
+				IndexColNames: yyS.item[yypt-3].([]*ast.IndexColName),
 				OnDelete:      onDeleteUpdate[0].(*ast.OnDeleteOpt),
 				OnUpdate:      onDeleteUpdate[1].(*ast.OnUpdateOpt),
-				Match:         yyS[yypt-1].item.(ast.MatchType),
+				Match:         yyS.item[yypt-1].(ast.MatchType),
 			}
 		}
 	case 163:
 		{
-			parser.yyVAL.item = &ast.OnDeleteOpt{ReferOpt: yyS[yypt-0].item.(ast.ReferOptionType)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.OnDeleteOpt{ReferOpt: yyS.item[yypt-0].(ast.ReferOptionType)}
 		}
 	case 164:
 		{
-			parser.yyVAL.item = &ast.OnUpdateOpt{ReferOpt: yyS[yypt-0].item.(ast.ReferOptionType)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.OnUpdateOpt{ReferOpt: yyS.item[yypt-0].(ast.ReferOptionType)}
 		}
 	case 165:
 		{
-			parser.yyVAL.item = [2]interface{}{&ast.OnDeleteOpt{}, &ast.OnUpdateOpt{}}
+			yyVAL.typ = itemType
+			yyVAL.item = [2]interface{}{&ast.OnDeleteOpt{}, &ast.OnUpdateOpt{}}
 		}
 	case 166:
 		{
-			parser.yyVAL.item = [2]interface{}{yyS[yypt-0].item, &ast.OnUpdateOpt{}}
+			yyVAL.typ = itemType
+			yyVAL.item = [2]interface{}{yyS.item[yypt-0], &ast.OnUpdateOpt{}}
 		}
 	case 167:
 		{
-			parser.yyVAL.item = [2]interface{}{&ast.OnDeleteOpt{}, yyS[yypt-0].item}
+			yyVAL.typ = itemType
+			yyVAL.item = [2]interface{}{&ast.OnDeleteOpt{}, yyS.item[yypt-0]}
 		}
 	case 168:
 		{
-			parser.yyVAL.item = [2]interface{}{yyS[yypt-1].item, yyS[yypt-0].item}
+			yyVAL.typ = itemType
+			yyVAL.item = [2]interface{}{yyS.item[yypt-1], yyS.item[yypt-0]}
 		}
 	case 169:
 		{
-			parser.yyVAL.item = [2]interface{}{yyS[yypt-0].item, yyS[yypt-1].item}
+			yyVAL.typ = itemType
+			yyVAL.item = [2]interface{}{yyS.item[yypt-0], yyS.item[yypt-1]}
 		}
 	case 170:
 		{
-			parser.yyVAL.item = ast.ReferOptionRestrict
+			yyVAL.typ = itemType
+			yyVAL.item = ast.ReferOptionRestrict
 		}
 	case 171:
 		{
-			parser.yyVAL.item = ast.ReferOptionCascade
+			yyVAL.typ = itemType
+			yyVAL.item = ast.ReferOptionCascade
 		}
 	case 172:
 		{
-			parser.yyVAL.item = ast.ReferOptionSetNull
+			yyVAL.typ = itemType
+			yyVAL.item = ast.ReferOptionSetNull
 		}
 	case 173:
 		{
-			parser.yyVAL.item = ast.ReferOptionNoAction
+			yyVAL.typ = itemType
+			yyVAL.item = ast.ReferOptionNoAction
 		}
 	case 174:
 		{
-			parser.yyVAL.item = ast.ReferOptionSetDefault
+			yyVAL.typ = itemType
+			yyVAL.item = ast.ReferOptionSetDefault
 			yylex.AppendError(yylex.Errorf("The SET DEFAULT clause is parsed but ignored by all storage engines."))
 			parser.lastErrorAsWarn()
 		}
 	case 177:
 		{
-			parser.yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr("CURRENT_TIMESTAMP")}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr("CURRENT_TIMESTAMP")}
 		}
 	case 178:
 		{
-			parser.yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr("CURRENT_TIMESTAMP")}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr("CURRENT_TIMESTAMP")}
 		}
 	case 179:
 		{
-			parser.yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr("CURRENT_TIMESTAMP"), Args: []ast.ExprNode{ast.NewValueExpr(yyS[yypt-1].item)}}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr("CURRENT_TIMESTAMP"), Args: []ast.ExprNode{ast.NewValueExpr(yyS.item[yypt-1])}}
 		}
 	case 187:
 		{
-			parser.yyVAL.expr = ast.NewValueExpr(yyS[yypt-0].expr)
+			yyVAL.typ = exprType
+			yyVAL.expr = ast.NewValueExpr(yyS.expr[yypt-0])
 		}
 	case 188:
 		{
-			parser.yyVAL.expr = &ast.UnaryOperationExpr{Op: opcode.Plus, V: ast.NewValueExpr(yyS[yypt-0].item)}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.UnaryOperationExpr{Op: opcode.Plus, V: ast.NewValueExpr(yyS.item[yypt-0])}
 		}
 	case 189:
 		{
-			parser.yyVAL.expr = &ast.UnaryOperationExpr{Op: opcode.Minus, V: ast.NewValueExpr(yyS[yypt-0].item)}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.UnaryOperationExpr{Op: opcode.Minus, V: ast.NewValueExpr(yyS.item[yypt-0])}
 		}
 	case 193:
 		{
 			var indexOption *ast.IndexOption
-			if yyS[yypt-1].item != nil {
-				indexOption = yyS[yypt-1].item.(*ast.IndexOption)
+			if yyS.item[yypt-1] != nil {
+				indexOption = yyS.item[yypt-1].(*ast.IndexOption)
 				if indexOption.Tp == model.IndexTypeInvalid {
-					if yyS[yypt-7].item != nil {
-						indexOption.Tp = yyS[yypt-7].item.(model.IndexType)
+					if yyS.item[yypt-7] != nil {
+						indexOption.Tp = yyS.item[yypt-7].(model.IndexType)
 					}
 				}
 			} else {
 				indexOption = &ast.IndexOption{}
-				if yyS[yypt-7].item != nil {
-					indexOption.Tp = yyS[yypt-7].item.(model.IndexType)
+				if yyS.item[yypt-7] != nil {
+					indexOption.Tp = yyS.item[yypt-7].(model.IndexType)
 				}
 			}
-			parser.yyVAL.statement = &ast.CreateIndexStmt{
-				Unique:        yyS[yypt-11].item.(bool),
-				IfNotExists:   yyS[yypt-9].item.(bool),
-				IndexName:     yyS[yypt-8].ident,
-				Table:         yyS[yypt-5].item.(*ast.TableName),
-				IndexColNames: yyS[yypt-3].item.([]*ast.IndexColName),
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.CreateIndexStmt{
+				Unique:        yyS.item[yypt-11].(bool),
+				IfNotExists:   yyS.item[yypt-9].(bool),
+				IndexName:     yyS.ident[yypt-8],
+				Table:         yyS.item[yypt-5].(*ast.TableName),
+				IndexColNames: yyS.item[yypt-3].([]*ast.IndexColName),
 				IndexOption:   indexOption,
 			}
 		}
 	case 194:
 		{
-			parser.yyVAL.item = false
+			yyVAL.typ = itemType
+			yyVAL.item = false
 		}
 	case 195:
 		{
-			parser.yyVAL.item = true
+			yyVAL.typ = itemType
+			yyVAL.item = true
 		}
 	case 196:
 		{
 			//Order is parsed but just ignored as MySQL did
-			parser.yyVAL.item = &ast.IndexColName{Column: yyS[yypt-2].item.(*ast.ColumnName), Length: yyS[yypt-1].item.(int)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.IndexColName{Column: yyS.item[yypt-2].(*ast.ColumnName), Length: yyS.item[yypt-1].(int)}
 		}
 	case 197:
 		{
-			parser.yyVAL.item = []*ast.IndexColName{yyS[yypt-0].item.(*ast.IndexColName)}
+			yyVAL.typ = itemType
+			yyVAL.item = []*ast.IndexColName{yyS.item[yypt-0].(*ast.IndexColName)}
 		}
 	case 198:
 		{
-			parser.yyVAL.item = append(yyS[yypt-2].item.([]*ast.IndexColName), yyS[yypt-0].item.(*ast.IndexColName))
+			yyVAL.typ = itemType
+			yyVAL.item = append(yyS.item[yypt-2].([]*ast.IndexColName), yyS.item[yypt-0].(*ast.IndexColName))
 		}
 	case 199:
 		{
-			parser.yyVAL.statement = &ast.AlterDatabaseStmt{
-				Name:                 yyS[yypt-1].item.(string),
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.AlterDatabaseStmt{
+				Name:                 yyS.item[yypt-1].(string),
 				AlterDefaultDatabase: false,
-				Options:              yyS[yypt-0].item.([]*ast.DatabaseOption),
+				Options:              yyS.item[yypt-0].([]*ast.DatabaseOption),
 			}
 		}
 	case 200:
 		{
-			parser.yyVAL.statement = &ast.AlterDatabaseStmt{
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.AlterDatabaseStmt{
 				Name:                 "",
 				AlterDefaultDatabase: true,
-				Options:              yyS[yypt-0].item.([]*ast.DatabaseOption),
+				Options:              yyS.item[yypt-0].([]*ast.DatabaseOption),
 			}
 		}
 	case 201:
 		{
-			parser.yyVAL.statement = &ast.CreateDatabaseStmt{
-				IfNotExists: yyS[yypt-2].item.(bool),
-				Name:        yyS[yypt-1].item.(string),
-				Options:     yyS[yypt-0].item.([]*ast.DatabaseOption),
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.CreateDatabaseStmt{
+				IfNotExists: yyS.item[yypt-2].(bool),
+				Name:        yyS.item[yypt-1].(string),
+				Options:     yyS.item[yypt-0].([]*ast.DatabaseOption),
 			}
 		}
 	case 202:
 		{
-			parser.yyVAL.item = yyS[yypt-0].ident
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.ident[yypt-0]
 		}
 	case 203:
 		{
-			parser.yyVAL.item = &ast.DatabaseOption{Tp: ast.DatabaseOptionCharset, Value: yyS[yypt-0].item.(string)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.DatabaseOption{Tp: ast.DatabaseOptionCharset, Value: yyS.item[yypt-0].(string)}
 		}
 	case 204:
 		{
-			parser.yyVAL.item = &ast.DatabaseOption{Tp: ast.DatabaseOptionCollate, Value: yyS[yypt-0].item.(string)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.DatabaseOption{Tp: ast.DatabaseOptionCollate, Value: yyS.item[yypt-0].(string)}
 		}
 	case 205:
 		{
-			parser.yyVAL.item = []*ast.DatabaseOption{}
+			yyVAL.typ = itemType
+			yyVAL.item = []*ast.DatabaseOption{}
 		}
 	case 207:
 		{
-			parser.yyVAL.item = []*ast.DatabaseOption{yyS[yypt-0].item.(*ast.DatabaseOption)}
+			yyVAL.typ = itemType
+			yyVAL.item = []*ast.DatabaseOption{yyS.item[yypt-0].(*ast.DatabaseOption)}
 		}
 	case 208:
 		{
-			parser.yyVAL.item = append(yyS[yypt-1].item.([]*ast.DatabaseOption), yyS[yypt-0].item.(*ast.DatabaseOption))
+			yyVAL.typ = itemType
+			yyVAL.item = append(yyS.item[yypt-1].([]*ast.DatabaseOption), yyS.item[yypt-0].(*ast.DatabaseOption))
 		}
 	case 209:
 		{
-			stmt := yyS[yypt-5].item.(*ast.CreateTableStmt)
-			stmt.Table = yyS[yypt-6].item.(*ast.TableName)
-			stmt.IfNotExists = yyS[yypt-7].item.(bool)
-			stmt.Options = yyS[yypt-4].item.([]*ast.TableOption)
-			if yyS[yypt-3].item != nil {
-				stmt.Partition = yyS[yypt-3].item.(*ast.PartitionOptions)
+			stmt := yyS.item[yypt-5].(*ast.CreateTableStmt)
+			stmt.Table = yyS.item[yypt-6].(*ast.TableName)
+			stmt.IfNotExists = yyS.item[yypt-7].(bool)
+			stmt.Options = yyS.item[yypt-4].([]*ast.TableOption)
+			if yyS.item[yypt-3] != nil {
+				stmt.Partition = yyS.item[yypt-3].(*ast.PartitionOptions)
 			}
-			stmt.OnDuplicate = yyS[yypt-2].item.(ast.OnDuplicateKeyHandlingType)
-			stmt.Select = yyS[yypt-0].item.(*ast.CreateTableStmt).Select
-			parser.yyVAL.statement = stmt
+			stmt.OnDuplicate = yyS.item[yypt-2].(ast.OnDuplicateKeyHandlingType)
+			stmt.Select = yyS.item[yypt-0].(*ast.CreateTableStmt).Select
+			yyVAL.typ = statementType
+			yyVAL.statement = stmt
 		}
 	case 210:
 		{
-			parser.yyVAL.statement = &ast.CreateTableStmt{
-				Table:       yyS[yypt-1].item.(*ast.TableName),
-				ReferTable:  yyS[yypt-0].item.(*ast.TableName),
-				IfNotExists: yyS[yypt-2].item.(bool),
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.CreateTableStmt{
+				Table:       yyS.item[yypt-1].(*ast.TableName),
+				ReferTable:  yyS.item[yypt-0].(*ast.TableName),
+				IfNotExists: yyS.item[yypt-2].(bool),
 			}
 		}
 	case 213:
 		{
-			parser.yyVAL.item = nil
+			yyVAL.typ = itemType
+			yyVAL.item = nil
 		}
 	case 214:
 		{
-			method := yyS[yypt-3].item.(*ast.PartitionMethod)
-			method.Num = yyS[yypt-2].item.(uint64)
-			sub, _ := yyS[yypt-1].item.(*ast.PartitionMethod)
-			defs, _ := yyS[yypt-0].item.([]*ast.PartitionDefinition)
+			method := yyS.item[yypt-3].(*ast.PartitionMethod)
+			method.Num = yyS.item[yypt-2].(uint64)
+			sub, _ := yyS.item[yypt-1].(*ast.PartitionMethod)
+			defs, _ := yyS.item[yypt-0].([]*ast.PartitionDefinition)
 			opt := &ast.PartitionOptions{
 				PartitionMethod: *method,
 				Sub:             sub,
@@ -9260,234 +9443,277 @@ yynewstate:
 				yylex.AppendError(err)
 				return 1
 			}
-			parser.yyVAL.item = opt
+			yyVAL.typ = itemType
+			yyVAL.item = opt
 		}
 	case 215:
 		{
-			parser.yyVAL.item = &ast.PartitionMethod{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.PartitionMethod{
 				Tp:          model.PartitionTypeKey,
-				Linear:      len(yyS[yypt-5].ident) != 0,
-				ColumnNames: yyS[yypt-1].item.([]*ast.ColumnName),
+				Linear:      len(yyS.ident[yypt-5]) != 0,
+				ColumnNames: yyS.item[yypt-1].([]*ast.ColumnName),
 			}
 		}
 	case 216:
 		{
-			parser.yyVAL.item = &ast.PartitionMethod{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.PartitionMethod{
 				Tp:     model.PartitionTypeHash,
-				Linear: len(yyS[yypt-4].ident) != 0,
-				Expr:   yyS[yypt-1].expr.(ast.ExprNode),
+				Linear: len(yyS.ident[yypt-4]) != 0,
+				Expr:   yyS.expr[yypt-1].(ast.ExprNode),
 			}
 		}
 	case 219:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0]
 		}
 	case 220:
 		{
-			parser.yyVAL.item = &ast.PartitionMethod{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.PartitionMethod{
 				Tp:   model.PartitionTypeRange,
-				Expr: yyS[yypt-1].expr.(ast.ExprNode),
+				Expr: yyS.expr[yypt-1].(ast.ExprNode),
 			}
 		}
 	case 221:
 		{
-			parser.yyVAL.item = &ast.PartitionMethod{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.PartitionMethod{
 				Tp:          model.PartitionTypeRange,
-				ColumnNames: yyS[yypt-1].item.([]*ast.ColumnName),
+				ColumnNames: yyS.item[yypt-1].([]*ast.ColumnName),
 			}
 		}
 	case 222:
 		{
-			parser.yyVAL.item = &ast.PartitionMethod{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.PartitionMethod{
 				Tp:   model.PartitionTypeList,
-				Expr: yyS[yypt-1].expr.(ast.ExprNode),
+				Expr: yyS.expr[yypt-1].(ast.ExprNode),
 			}
 		}
 	case 223:
 		{
-			parser.yyVAL.item = &ast.PartitionMethod{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.PartitionMethod{
 				Tp:          model.PartitionTypeList,
-				ColumnNames: yyS[yypt-1].item.([]*ast.ColumnName),
+				ColumnNames: yyS.item[yypt-1].([]*ast.ColumnName),
 			}
 		}
 	case 224:
 		{
-			parser.yyVAL.item = &ast.PartitionMethod{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.PartitionMethod{
 				Tp:   model.PartitionTypeSystemTime,
-				Expr: yyS[yypt-1].expr.(ast.ExprNode),
-				Unit: ast.NewValueExpr(yyS[yypt-0].ident),
+				Expr: yyS.expr[yypt-1].(ast.ExprNode),
+				Unit: ast.NewValueExpr(yyS.ident[yypt-0]),
 			}
 		}
 	case 225:
 		{
-			parser.yyVAL.item = &ast.PartitionMethod{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.PartitionMethod{
 				Tp:    model.PartitionTypeSystemTime,
-				Limit: yyS[yypt-0].item.(uint64),
+				Limit: yyS.item[yypt-0].(uint64),
 			}
 		}
 	case 226:
 		{
-			parser.yyVAL.item = &ast.PartitionMethod{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.PartitionMethod{
 				Tp: model.PartitionTypeSystemTime,
 			}
 		}
 	case 227:
 		{
-			parser.yyVAL.ident = ""
+			yyVAL.typ = identType
+			yyVAL.ident = ""
 		}
 	case 228:
 		{
-			parser.yyVAL.ident = yyS[yypt-0].ident
+			yyVAL.typ = identType
+			yyVAL.ident = yyS.ident[yypt-0]
 		}
 	case 229:
 		{
-			parser.yyVAL.item = nil
+			yyVAL.typ = itemType
+			yyVAL.item = nil
 		}
 	case 230:
 		{
-			method := yyS[yypt-1].item.(*ast.PartitionMethod)
-			method.Num = yyS[yypt-0].item.(uint64)
-			parser.yyVAL.item = method
+			method := yyS.item[yypt-1].(*ast.PartitionMethod)
+			method.Num = yyS.item[yypt-0].(uint64)
+			yyVAL.typ = itemType
+			yyVAL.item = method
 		}
 	case 231:
 		{
-			parser.yyVAL.item = uint64(0)
+			yyVAL.typ = itemType
+			yyVAL.item = uint64(0)
 		}
 	case 232:
 		{
-			res := yyS[yypt-0].item.(uint64)
+			res := yyS.item[yypt-0].(uint64)
 			if res == 0 {
 				yylex.AppendError(ast.ErrNoParts.GenWithStackByArgs("subpartitions"))
 				return 1
 			}
-			parser.yyVAL.item = res
+			yyVAL.typ = itemType
+			yyVAL.item = res
 		}
 	case 233:
 		{
-			parser.yyVAL.item = uint64(0)
+			yyVAL.typ = itemType
+			yyVAL.item = uint64(0)
 		}
 	case 234:
 		{
-			res := yyS[yypt-0].item.(uint64)
+			res := yyS.item[yypt-0].(uint64)
 			if res == 0 {
 				yylex.AppendError(ast.ErrNoParts.GenWithStackByArgs("partitions"))
 				return 1
 			}
-			parser.yyVAL.item = res
+			yyVAL.typ = itemType
+			yyVAL.item = res
 		}
 	case 235:
 		{
-			parser.yyVAL.item = nil
+			yyVAL.typ = itemType
+			yyVAL.item = nil
 		}
 	case 236:
 		{
-			parser.yyVAL.item = yyS[yypt-1].item.([]*ast.PartitionDefinition)
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-1].([]*ast.PartitionDefinition)
 		}
 	case 237:
 		{
-			parser.yyVAL.item = []*ast.PartitionDefinition{yyS[yypt-0].item.(*ast.PartitionDefinition)}
+			yyVAL.typ = itemType
+			yyVAL.item = []*ast.PartitionDefinition{yyS.item[yypt-0].(*ast.PartitionDefinition)}
 		}
 	case 238:
 		{
-			parser.yyVAL.item = append(yyS[yypt-2].item.([]*ast.PartitionDefinition), yyS[yypt-0].item.(*ast.PartitionDefinition))
+			yyVAL.typ = itemType
+			yyVAL.item = append(yyS.item[yypt-2].([]*ast.PartitionDefinition), yyS.item[yypt-0].(*ast.PartitionDefinition))
 		}
 	case 239:
 		{
-			parser.yyVAL.item = &ast.PartitionDefinition{
-				Name:    model.NewCIStr(yyS[yypt-3].ident),
-				Clause:  yyS[yypt-2].item.(ast.PartitionDefinitionClause),
-				Options: yyS[yypt-1].item.([]*ast.TableOption),
-				Sub:     yyS[yypt-0].item.([]*ast.SubPartitionDefinition),
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.PartitionDefinition{
+				Name:    model.NewCIStr(yyS.ident[yypt-3]),
+				Clause:  yyS.item[yypt-2].(ast.PartitionDefinitionClause),
+				Options: yyS.item[yypt-1].([]*ast.TableOption),
+				Sub:     yyS.item[yypt-0].([]*ast.SubPartitionDefinition),
 			}
 		}
 	case 240:
 		{
-			parser.yyVAL.item = make([]*ast.SubPartitionDefinition, 0)
+			yyVAL.typ = itemType
+			yyVAL.item = make([]*ast.SubPartitionDefinition, 0)
 		}
 	case 241:
 		{
-			parser.yyVAL.item = yyS[yypt-1].item
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-1]
 		}
 	case 242:
 		{
-			parser.yyVAL.item = []*ast.SubPartitionDefinition{yyS[yypt-0].item.(*ast.SubPartitionDefinition)}
+			yyVAL.typ = itemType
+			yyVAL.item = []*ast.SubPartitionDefinition{yyS.item[yypt-0].(*ast.SubPartitionDefinition)}
 		}
 	case 243:
 		{
-			list := yyS[yypt-2].item.([]*ast.SubPartitionDefinition)
-			parser.yyVAL.item = append(list, yyS[yypt-0].item.(*ast.SubPartitionDefinition))
+			list := yyS.item[yypt-2].([]*ast.SubPartitionDefinition)
+			yyVAL.typ = itemType
+			yyVAL.item = append(list, yyS.item[yypt-0].(*ast.SubPartitionDefinition))
 		}
 	case 244:
 		{
-			parser.yyVAL.item = &ast.SubPartitionDefinition{
-				Name:    model.NewCIStr(yyS[yypt-1].ident),
-				Options: yyS[yypt-0].item.([]*ast.TableOption),
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.SubPartitionDefinition{
+				Name:    model.NewCIStr(yyS.ident[yypt-1]),
+				Options: yyS.item[yypt-0].([]*ast.TableOption),
 			}
 		}
 	case 245:
 		{
-			parser.yyVAL.item = make([]*ast.TableOption, 0)
+			yyVAL.typ = itemType
+			yyVAL.item = make([]*ast.TableOption, 0)
 		}
 	case 246:
 		{
-			list := yyS[yypt-1].item.([]*ast.TableOption)
-			parser.yyVAL.item = append(list, yyS[yypt-0].item.(*ast.TableOption))
+			list := yyS.item[yypt-1].([]*ast.TableOption)
+			yyVAL.typ = itemType
+			yyVAL.item = append(list, yyS.item[yypt-0].(*ast.TableOption))
 		}
 	case 247:
 		{
-			parser.yyVAL.item = &ast.TableOption{Tp: ast.TableOptionComment, StrValue: yyS[yypt-0].ident}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TableOption{Tp: ast.TableOptionComment, StrValue: yyS.ident[yypt-0]}
 		}
 	case 248:
 		{
-			parser.yyVAL.item = &ast.TableOption{Tp: ast.TableOptionEngine, StrValue: yyS[yypt-0].item.(string)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TableOption{Tp: ast.TableOptionEngine, StrValue: yyS.item[yypt-0].(string)}
 		}
 	case 249:
 		{
-			parser.yyVAL.item = &ast.TableOption{Tp: ast.TableOptionDataDirectory, StrValue: yyS[yypt-0].ident}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TableOption{Tp: ast.TableOptionDataDirectory, StrValue: yyS.ident[yypt-0]}
 		}
 	case 250:
 		{
-			parser.yyVAL.item = &ast.TableOption{Tp: ast.TableOptionIndexDirectory, StrValue: yyS[yypt-0].ident}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TableOption{Tp: ast.TableOptionIndexDirectory, StrValue: yyS.ident[yypt-0]}
 		}
 	case 251:
 		{
-			parser.yyVAL.item = &ast.TableOption{Tp: ast.TableOptionMaxRows, UintValue: yyS[yypt-0].item.(uint64)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TableOption{Tp: ast.TableOptionMaxRows, UintValue: yyS.item[yypt-0].(uint64)}
 		}
 	case 252:
 		{
-			parser.yyVAL.item = &ast.TableOption{Tp: ast.TableOptionMinRows, UintValue: yyS[yypt-0].item.(uint64)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TableOption{Tp: ast.TableOptionMinRows, UintValue: yyS.item[yypt-0].(uint64)}
 		}
 	case 253:
 		{
-			parser.yyVAL.item = &ast.TableOption{Tp: ast.TableOptionTablespace, StrValue: yyS[yypt-0].ident}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TableOption{Tp: ast.TableOptionTablespace, StrValue: yyS.ident[yypt-0]}
 		}
 	case 254:
 		{
-			parser.yyVAL.item = &ast.TableOption{Tp: ast.TableOptionNodegroup, UintValue: yyS[yypt-0].item.(uint64)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TableOption{Tp: ast.TableOptionNodegroup, UintValue: yyS.item[yypt-0].(uint64)}
 		}
 	case 255:
 		{
-			parser.yyVAL.item = &ast.PartitionDefinitionClauseNone{}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.PartitionDefinitionClauseNone{}
 		}
 	case 256:
 		{
-			parser.yyVAL.item = &ast.PartitionDefinitionClauseLessThan{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.PartitionDefinitionClauseLessThan{
 				Exprs: []ast.ExprNode{&ast.MaxValueExpr{}},
 			}
 		}
 	case 257:
 		{
-			parser.yyVAL.item = &ast.PartitionDefinitionClauseLessThan{
-				Exprs: yyS[yypt-1].item.([]ast.ExprNode),
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.PartitionDefinitionClauseLessThan{
+				Exprs: yyS.item[yypt-1].([]ast.ExprNode),
 			}
 		}
 	case 258:
 		{
-			parser.yyVAL.item = &ast.PartitionDefinitionClauseIn{}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.PartitionDefinitionClauseIn{}
 		}
 	case 259:
 		{
-			exprs := yyS[yypt-1].item.([]ast.ExprNode)
+			exprs := yyS.item[yypt-1].([]ast.ExprNode)
 			values := make([][]ast.ExprNode, 0, len(exprs))
 			for _, expr := range exprs {
 				if row, ok := expr.(*ast.RowExpr); ok {
@@ -9496,646 +9722,764 @@ yynewstate:
 					values = append(values, []ast.ExprNode{expr})
 				}
 			}
-			parser.yyVAL.item = &ast.PartitionDefinitionClauseIn{Values: values}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.PartitionDefinitionClauseIn{Values: values}
 		}
 	case 260:
 		{
-			parser.yyVAL.item = &ast.PartitionDefinitionClauseHistory{Current: false}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.PartitionDefinitionClauseHistory{Current: false}
 		}
 	case 261:
 		{
-			parser.yyVAL.item = &ast.PartitionDefinitionClauseHistory{Current: true}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.PartitionDefinitionClauseHistory{Current: true}
 		}
 	case 262:
 		{
-			parser.yyVAL.item = ast.OnDuplicateKeyHandlingError
+			yyVAL.typ = itemType
+			yyVAL.item = ast.OnDuplicateKeyHandlingError
 		}
 	case 263:
 		{
-			parser.yyVAL.item = ast.OnDuplicateKeyHandlingIgnore
+			yyVAL.typ = itemType
+			yyVAL.item = ast.OnDuplicateKeyHandlingIgnore
 		}
 	case 264:
 		{
-			parser.yyVAL.item = ast.OnDuplicateKeyHandlingReplace
+			yyVAL.typ = itemType
+			yyVAL.item = ast.OnDuplicateKeyHandlingReplace
 		}
 	case 267:
 		{
-			parser.yyVAL.item = &ast.CreateTableStmt{}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.CreateTableStmt{}
 		}
 	case 268:
 		{
-			parser.yyVAL.item = &ast.CreateTableStmt{Select: yyS[yypt-0].statement}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.CreateTableStmt{Select: yyS.statement[yypt-0]}
 		}
 	case 269:
 		{
-			parser.yyVAL.item = &ast.CreateTableStmt{Select: yyS[yypt-0].statement}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.CreateTableStmt{Select: yyS.statement[yypt-0]}
 		}
 	case 270:
 		{
-			parser.yyVAL.item = &ast.CreateTableStmt{Select: yyS[yypt-0].expr}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.CreateTableStmt{Select: yyS.expr[yypt-0]}
 		}
 	case 271:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0]
 		}
 	case 272:
 		{
-			parser.yyVAL.item = yyS[yypt-1].item
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-1]
 		}
 	case 273:
 		{
-			startOffset := parser.startOffset(&yyS[yypt-1])
-			selStmt := yyS[yypt-1].statement.(*ast.SelectStmt)
+			startOffset := yyS.offset[yypt-1]
+			selStmt := yyS.statement[yypt-1].(*ast.SelectStmt)
 			selStmt.SetText(strings.TrimSpace(parser.src[startOffset:]))
 			x := &ast.CreateViewStmt{
-				OrReplace: yyS[yypt-9].item.(bool),
-				ViewName:  yyS[yypt-4].item.(*ast.TableName),
+				OrReplace: yyS.item[yypt-9].(bool),
+				ViewName:  yyS.item[yypt-4].(*ast.TableName),
 				Select:    selStmt,
-				Algorithm: yyS[yypt-8].item.(model.ViewAlgorithm),
-				Definer:   yyS[yypt-7].item.(*auth.UserIdentity),
-				Security:  yyS[yypt-6].item.(model.ViewSecurity),
+				Algorithm: yyS.item[yypt-8].(model.ViewAlgorithm),
+				Definer:   yyS.item[yypt-7].(*auth.UserIdentity),
+				Security:  yyS.item[yypt-6].(model.ViewSecurity),
 			}
-			if yyS[yypt-3].item != nil {
-				x.Cols = yyS[yypt-3].item.([]model.CIStr)
+			if yyS.item[yypt-3] != nil {
+				x.Cols = yyS.item[yypt-3].([]model.CIStr)
 			}
-			if yyS[yypt-0].item != nil {
-				x.CheckOption = yyS[yypt-0].item.(model.ViewCheckOption)
-				endOffset := parser.startOffset(&yyS[yypt])
+			if yyS.item[yypt-0] != nil {
+				x.CheckOption = yyS.item[yypt-0].(model.ViewCheckOption)
+				endOffset := yyS.offset[yypt]
 				selStmt.SetText(strings.TrimSpace(parser.src[startOffset:endOffset]))
 			} else {
 				x.CheckOption = model.CheckOptionCascaded
 			}
-			parser.yyVAL.statement = x
+			yyVAL.typ = statementType
+			yyVAL.statement = x
 		}
 	case 274:
 		{
-			parser.yyVAL.item = false
+			yyVAL.typ = itemType
+			yyVAL.item = false
 		}
 	case 275:
 		{
-			parser.yyVAL.item = true
+			yyVAL.typ = itemType
+			yyVAL.item = true
 		}
 	case 276:
 		{
-			parser.yyVAL.item = model.AlgorithmUndefined
+			yyVAL.typ = itemType
+			yyVAL.item = model.AlgorithmUndefined
 		}
 	case 277:
 		{
-			parser.yyVAL.item = model.AlgorithmUndefined
+			yyVAL.typ = itemType
+			yyVAL.item = model.AlgorithmUndefined
 		}
 	case 278:
 		{
-			parser.yyVAL.item = model.AlgorithmMerge
+			yyVAL.typ = itemType
+			yyVAL.item = model.AlgorithmMerge
 		}
 	case 279:
 		{
-			parser.yyVAL.item = model.AlgorithmTemptable
+			yyVAL.typ = itemType
+			yyVAL.item = model.AlgorithmTemptable
 		}
 	case 280:
 		{
-			parser.yyVAL.item = &auth.UserIdentity{CurrentUser: true}
+			yyVAL.typ = itemType
+			yyVAL.item = &auth.UserIdentity{CurrentUser: true}
 		}
 	case 281:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0]
 		}
 	case 282:
 		{
-			parser.yyVAL.item = model.SecurityDefiner
+			yyVAL.typ = itemType
+			yyVAL.item = model.SecurityDefiner
 		}
 	case 283:
 		{
-			parser.yyVAL.item = model.SecurityDefiner
+			yyVAL.typ = itemType
+			yyVAL.item = model.SecurityDefiner
 		}
 	case 284:
 		{
-			parser.yyVAL.item = model.SecurityInvoker
+			yyVAL.typ = itemType
+			yyVAL.item = model.SecurityInvoker
 		}
 	case 285:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item.(*ast.TableName)
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0].(*ast.TableName)
 		}
 	case 286:
 		{
-			parser.yyVAL.item = nil
+			yyVAL.typ = itemType
+			yyVAL.item = nil
 		}
 	case 287:
 		{
-			parser.yyVAL.item = yyS[yypt-1].item.([]model.CIStr)
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-1].([]model.CIStr)
 		}
 	case 288:
 		{
-			parser.yyVAL.item = []model.CIStr{model.NewCIStr(yyS[yypt-0].ident)}
+			yyVAL.typ = itemType
+			yyVAL.item = []model.CIStr{model.NewCIStr(yyS.ident[yypt-0])}
 		}
 	case 289:
 		{
-			parser.yyVAL.item = append(yyS[yypt-2].item.([]model.CIStr), model.NewCIStr(yyS[yypt-0].ident))
+			yyVAL.typ = itemType
+			yyVAL.item = append(yyS.item[yypt-2].([]model.CIStr), model.NewCIStr(yyS.ident[yypt-0]))
 		}
 	case 290:
 		{
-			parser.yyVAL.item = nil
+			yyVAL.typ = itemType
+			yyVAL.item = nil
 		}
 	case 291:
 		{
-			parser.yyVAL.item = model.CheckOptionCascaded
+			yyVAL.typ = itemType
+			yyVAL.item = model.CheckOptionCascaded
 		}
 	case 292:
 		{
-			parser.yyVAL.item = model.CheckOptionLocal
+			yyVAL.typ = itemType
+			yyVAL.item = model.CheckOptionLocal
 		}
 	case 293:
 		{
-			parser.yyVAL.statement = &ast.DoStmt{
-				Exprs: yyS[yypt-0].item.([]ast.ExprNode),
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.DoStmt{
+				Exprs: yyS.item[yypt-0].([]ast.ExprNode),
 			}
 		}
 	case 294:
 		{
 			// Single Table
-			tn := yyS[yypt-5].item.(*ast.TableName)
-			tn.IndexHints = yyS[yypt-3].item.([]*ast.IndexHint)
-			join := &ast.Join{Left: &ast.TableSource{Source: tn, AsName: yyS[yypt-4].item.(model.CIStr)}, Right: nil}
+			tn := yyS.item[yypt-5].(*ast.TableName)
+			tn.IndexHints = yyS.item[yypt-3].([]*ast.IndexHint)
+			join := &ast.Join{Left: &ast.TableSource{Source: tn, AsName: yyS.item[yypt-4].(model.CIStr)}, Right: nil}
 			x := &ast.DeleteStmt{
 				TableRefs: &ast.TableRefsClause{TableRefs: join},
-				Priority:  yyS[yypt-9].item.(mysql.PriorityEnum),
-				Quick:     yyS[yypt-8].item.(bool),
-				IgnoreErr: yyS[yypt-7].item.(bool),
+				Priority:  yyS.item[yypt-9].(mysql.PriorityEnum),
+				Quick:     yyS.item[yypt-8].(bool),
+				IgnoreErr: yyS.item[yypt-7].(bool),
 			}
-			if yyS[yypt-2].item != nil {
-				x.Where = yyS[yypt-2].item.(ast.ExprNode)
+			if yyS.item[yypt-2] != nil {
+				x.Where = yyS.item[yypt-2].(ast.ExprNode)
 			}
-			if yyS[yypt-1].item != nil {
-				x.Order = yyS[yypt-1].item.(*ast.OrderByClause)
+			if yyS.item[yypt-1] != nil {
+				x.Order = yyS.item[yypt-1].(*ast.OrderByClause)
 			}
-			if yyS[yypt-0].item != nil {
-				x.Limit = yyS[yypt-0].item.(*ast.Limit)
+			if yyS.item[yypt-0] != nil {
+				x.Limit = yyS.item[yypt-0].(*ast.Limit)
 			}
 
-			parser.yyVAL.statement = x
+			yyVAL.typ = statementType
+			yyVAL.statement = x
 		}
 	case 295:
 		{
 			// Multiple Table
 			x := &ast.DeleteStmt{
-				Priority:     yyS[yypt-6].item.(mysql.PriorityEnum),
-				Quick:        yyS[yypt-5].item.(bool),
-				IgnoreErr:    yyS[yypt-4].item.(bool),
+				Priority:     yyS.item[yypt-6].(mysql.PriorityEnum),
+				Quick:        yyS.item[yypt-5].(bool),
+				IgnoreErr:    yyS.item[yypt-4].(bool),
 				IsMultiTable: true,
 				BeforeFrom:   true,
-				Tables:       &ast.DeleteTableList{Tables: yyS[yypt-3].item.([]*ast.TableName)},
-				TableRefs:    &ast.TableRefsClause{TableRefs: yyS[yypt-1].item.(*ast.Join)},
+				Tables:       &ast.DeleteTableList{Tables: yyS.item[yypt-3].([]*ast.TableName)},
+				TableRefs:    &ast.TableRefsClause{TableRefs: yyS.item[yypt-1].(*ast.Join)},
 			}
-			if yyS[yypt-7].item != nil {
-				x.TableHints = yyS[yypt-7].item.([]*ast.TableOptimizerHint)
+			if yyS.item[yypt-7] != nil {
+				x.TableHints = yyS.item[yypt-7].([]*ast.TableOptimizerHint)
 			}
-			if yyS[yypt-0].item != nil {
-				x.Where = yyS[yypt-0].item.(ast.ExprNode)
+			if yyS.item[yypt-0] != nil {
+				x.Where = yyS.item[yypt-0].(ast.ExprNode)
 			}
-			parser.yyVAL.statement = x
+			yyVAL.typ = statementType
+			yyVAL.statement = x
 		}
 	case 296:
 		{
 			// Multiple Table
 			x := &ast.DeleteStmt{
-				Priority:     yyS[yypt-7].item.(mysql.PriorityEnum),
-				Quick:        yyS[yypt-6].item.(bool),
-				IgnoreErr:    yyS[yypt-5].item.(bool),
+				Priority:     yyS.item[yypt-7].(mysql.PriorityEnum),
+				Quick:        yyS.item[yypt-6].(bool),
+				IgnoreErr:    yyS.item[yypt-5].(bool),
 				IsMultiTable: true,
-				Tables:       &ast.DeleteTableList{Tables: yyS[yypt-3].item.([]*ast.TableName)},
-				TableRefs:    &ast.TableRefsClause{TableRefs: yyS[yypt-1].item.(*ast.Join)},
+				Tables:       &ast.DeleteTableList{Tables: yyS.item[yypt-3].([]*ast.TableName)},
+				TableRefs:    &ast.TableRefsClause{TableRefs: yyS.item[yypt-1].(*ast.Join)},
 			}
-			if yyS[yypt-8].item != nil {
-				x.TableHints = yyS[yypt-8].item.([]*ast.TableOptimizerHint)
+			if yyS.item[yypt-8] != nil {
+				x.TableHints = yyS.item[yypt-8].([]*ast.TableOptimizerHint)
 			}
-			if yyS[yypt-0].item != nil {
-				x.Where = yyS[yypt-0].item.(ast.ExprNode)
+			if yyS.item[yypt-0] != nil {
+				x.Where = yyS.item[yypt-0].(ast.ExprNode)
 			}
-			parser.yyVAL.statement = x
+			yyVAL.typ = statementType
+			yyVAL.statement = x
 		}
 	case 298:
 		{
-			parser.yyVAL.statement = &ast.DropDatabaseStmt{IfExists: yyS[yypt-1].item.(bool), Name: yyS[yypt-0].item.(string)}
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.DropDatabaseStmt{IfExists: yyS.item[yypt-1].(bool), Name: yyS.item[yypt-0].(string)}
 		}
 	case 299:
 		{
-			parser.yyVAL.statement = &ast.DropIndexStmt{IfExists: yyS[yypt-3].item.(bool), IndexName: yyS[yypt-2].ident, Table: yyS[yypt-0].item.(*ast.TableName)}
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.DropIndexStmt{IfExists: yyS.item[yypt-3].(bool), IndexName: yyS.ident[yypt-2], Table: yyS.item[yypt-0].(*ast.TableName)}
 		}
 	case 300:
 		{
-			parser.yyVAL.statement = &ast.DropTableStmt{IfExists: yyS[yypt-2].item.(bool), Tables: yyS[yypt-1].item.([]*ast.TableName), IsView: false, IsTemporary: yyS[yypt-4].item.(bool)}
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.DropTableStmt{IfExists: yyS.item[yypt-2].(bool), Tables: yyS.item[yypt-1].([]*ast.TableName), IsView: false, IsTemporary: yyS.item[yypt-4].(bool)}
 		}
 	case 301:
 		{
-			parser.yyVAL.item = false
+			yyVAL.typ = itemType
+			yyVAL.item = false
 		}
 	case 302:
 		{
-			parser.yyVAL.item = true
+			yyVAL.typ = itemType
+			yyVAL.item = true
 		}
 	case 303:
 		{
-			parser.yyVAL.statement = &ast.DropTableStmt{Tables: yyS[yypt-1].item.([]*ast.TableName), IsView: true}
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.DropTableStmt{Tables: yyS.item[yypt-1].([]*ast.TableName), IsView: true}
 		}
 	case 304:
 		{
-			parser.yyVAL.statement = &ast.DropTableStmt{IfExists: true, Tables: yyS[yypt-1].item.([]*ast.TableName), IsView: true}
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.DropTableStmt{IfExists: true, Tables: yyS.item[yypt-1].([]*ast.TableName), IsView: true}
 		}
 	case 305:
 		{
-			parser.yyVAL.statement = &ast.DropUserStmt{IsDropRole: false, IfExists: false, UserList: yyS[yypt-0].item.([]*auth.UserIdentity)}
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.DropUserStmt{IsDropRole: false, IfExists: false, UserList: yyS.item[yypt-0].([]*auth.UserIdentity)}
 		}
 	case 306:
 		{
-			parser.yyVAL.statement = &ast.DropUserStmt{IsDropRole: false, IfExists: true, UserList: yyS[yypt-0].item.([]*auth.UserIdentity)}
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.DropUserStmt{IsDropRole: false, IfExists: true, UserList: yyS.item[yypt-0].([]*auth.UserIdentity)}
 		}
 	case 307:
 		{
 			tmp := make([]*auth.UserIdentity, 0, 10)
-			roleList := yyS[yypt-0].item.([]*auth.RoleIdentity)
+			roleList := yyS.item[yypt-0].([]*auth.RoleIdentity)
 			for _, r := range roleList {
 				tmp = append(tmp, &auth.UserIdentity{Username: r.Username, Hostname: r.Hostname})
 			}
-			parser.yyVAL.statement = &ast.DropUserStmt{IsDropRole: true, IfExists: false, UserList: tmp}
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.DropUserStmt{IsDropRole: true, IfExists: false, UserList: tmp}
 		}
 	case 308:
 		{
 			tmp := make([]*auth.UserIdentity, 0, 10)
-			roleList := yyS[yypt-0].item.([]*auth.RoleIdentity)
+			roleList := yyS.item[yypt-0].([]*auth.RoleIdentity)
 			for _, r := range roleList {
 				tmp = append(tmp, &auth.UserIdentity{Username: r.Username, Hostname: r.Hostname})
 			}
-			parser.yyVAL.statement = &ast.DropUserStmt{IsDropRole: true, IfExists: true, UserList: tmp}
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.DropUserStmt{IsDropRole: true, IfExists: true, UserList: tmp}
 		}
 	case 309:
 		{
-			parser.yyVAL.statement = &ast.DropStatsStmt{Table: yyS[yypt-0].item.(*ast.TableName)}
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.DropStatsStmt{Table: yyS.item[yypt-0].(*ast.TableName)}
 		}
 	case 317:
 		{
-			parser.yyVAL.statement = nil
+			yyVAL.typ = statementType
+			yyVAL.statement = nil
 		}
 	case 318:
 		{
-			parser.yyVAL.statement = &ast.TraceStmt{
-				Stmt:   yyS[yypt-0].statement,
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.TraceStmt{
+				Stmt:   yyS.statement[yypt-0],
 				Format: "json",
 			}
-			startOffset := parser.startOffset(&yyS[yypt])
-			yyS[yypt-0].statement.SetText(string(parser.src[startOffset:]))
+			startOffset := yyS.offset[yypt]
+			yyS.statement[yypt-0].SetText(string(parser.src[startOffset:]))
 		}
 	case 319:
 		{
-			parser.yyVAL.statement = &ast.TraceStmt{
-				Stmt:   yyS[yypt-0].statement,
-				Format: yyS[yypt-1].ident,
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.TraceStmt{
+				Stmt:   yyS.statement[yypt-0],
+				Format: yyS.ident[yypt-1],
 			}
-			startOffset := parser.startOffset(&yyS[yypt])
-			yyS[yypt-0].statement.SetText(string(parser.src[startOffset:]))
+			startOffset := yyS.offset[yypt]
+			yyS.statement[yypt-0].SetText(string(parser.src[startOffset:]))
 		}
 	case 323:
 		{
-			parser.yyVAL.statement = &ast.ExplainStmt{
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.ExplainStmt{
 				Stmt: &ast.ShowStmt{
 					Tp:    ast.ShowColumns,
-					Table: yyS[yypt-0].item.(*ast.TableName),
+					Table: yyS.item[yypt-0].(*ast.TableName),
 				},
 			}
 		}
 	case 324:
 		{
-			parser.yyVAL.statement = &ast.ExplainStmt{
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.ExplainStmt{
 				Stmt: &ast.ShowStmt{
 					Tp:     ast.ShowColumns,
-					Table:  yyS[yypt-1].item.(*ast.TableName),
-					Column: yyS[yypt-0].item.(*ast.ColumnName),
+					Table:  yyS.item[yypt-1].(*ast.TableName),
+					Column: yyS.item[yypt-0].(*ast.ColumnName),
 				},
 			}
 		}
 	case 325:
 		{
-			parser.yyVAL.statement = &ast.ExplainStmt{
-				Stmt:   yyS[yypt-0].statement,
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.ExplainStmt{
+				Stmt:   yyS.statement[yypt-0],
 				Format: "row",
 			}
 		}
 	case 326:
 		{
-			parser.yyVAL.statement = &ast.ExplainForStmt{
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.ExplainForStmt{
 				Format:       "row",
-				ConnectionID: getUint64FromNUM(yyS[yypt-0].item),
+				ConnectionID: getUint64FromNUM(yyS.item[yypt-0]),
 			}
 		}
 	case 327:
 		{
-			parser.yyVAL.statement = &ast.ExplainForStmt{
-				Format:       yyS[yypt-3].ident,
-				ConnectionID: getUint64FromNUM(yyS[yypt-0].item),
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.ExplainForStmt{
+				Format:       yyS.ident[yypt-3],
+				ConnectionID: getUint64FromNUM(yyS.item[yypt-0]),
 			}
 		}
 	case 328:
 		{
-			parser.yyVAL.statement = &ast.ExplainStmt{
-				Stmt:   yyS[yypt-0].statement,
-				Format: yyS[yypt-1].ident,
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.ExplainStmt{
+				Stmt:   yyS.statement[yypt-0],
+				Format: yyS.ident[yypt-1],
 			}
 		}
 	case 329:
 		{
-			parser.yyVAL.statement = &ast.ExplainForStmt{
-				Format:       yyS[yypt-3].item.(string),
-				ConnectionID: getUint64FromNUM(yyS[yypt-0].item),
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.ExplainForStmt{
+				Format:       yyS.item[yypt-3].(string),
+				ConnectionID: getUint64FromNUM(yyS.item[yypt-0]),
 			}
 		}
 	case 330:
 		{
-			parser.yyVAL.statement = &ast.ExplainStmt{
-				Stmt:   yyS[yypt-0].statement,
-				Format: yyS[yypt-1].item.(string),
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.ExplainStmt{
+				Stmt:   yyS.statement[yypt-0],
+				Format: yyS.item[yypt-1].(string),
 			}
 		}
 	case 331:
 		{
-			parser.yyVAL.statement = &ast.ExplainStmt{
-				Stmt:    yyS[yypt-0].statement,
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.ExplainStmt{
+				Stmt:    yyS.statement[yypt-0],
 				Format:  "row",
 				Analyze: true,
 			}
 		}
 	case 332:
 		{
-			parser.yyVAL.item = "row"
+			yyVAL.typ = itemType
+			yyVAL.item = "row"
 		}
 	case 333:
 		{
-			parser.yyVAL.item = "json"
+			yyVAL.typ = itemType
+			yyVAL.item = "json"
 		}
 	case 334:
 		{
-			parser.yyVAL.item = getUint64FromNUM(yyS[yypt-0].item)
+			yyVAL.typ = itemType
+			yyVAL.item = getUint64FromNUM(yyS.item[yypt-0])
 		}
 	case 336:
 		{
-			v := yyS[yypt-2].ident
+			v := yyS.ident[yypt-2]
 			v = strings.TrimPrefix(v, "@")
-			parser.yyVAL.expr = &ast.VariableExpr{
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.VariableExpr{
 				Name:     v,
 				IsGlobal: false,
 				IsSystem: false,
-				Value:    yyS[yypt-0].expr,
+				Value:    yyS.expr[yypt-0],
 			}
 		}
 	case 337:
 		{
-			parser.yyVAL.expr = &ast.BinaryOperationExpr{Op: opcode.LogicOr, L: yyS[yypt-2].expr, R: yyS[yypt-0].expr}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.BinaryOperationExpr{Op: opcode.LogicOr, L: yyS.expr[yypt-2], R: yyS.expr[yypt-0]}
 		}
 	case 338:
 		{
-			parser.yyVAL.expr = &ast.BinaryOperationExpr{Op: opcode.LogicXor, L: yyS[yypt-2].expr, R: yyS[yypt-0].expr}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.BinaryOperationExpr{Op: opcode.LogicXor, L: yyS.expr[yypt-2], R: yyS.expr[yypt-0]}
 		}
 	case 339:
 		{
-			parser.yyVAL.expr = &ast.BinaryOperationExpr{Op: opcode.LogicAnd, L: yyS[yypt-2].expr, R: yyS[yypt-0].expr}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.BinaryOperationExpr{Op: opcode.LogicAnd, L: yyS.expr[yypt-2], R: yyS.expr[yypt-0]}
 		}
 	case 340:
 		{
-			expr, ok := yyS[yypt-0].expr.(*ast.ExistsSubqueryExpr)
+			expr, ok := yyS.expr[yypt-0].(*ast.ExistsSubqueryExpr)
 			if ok {
 				expr.Not = true
-				parser.yyVAL.expr = yyS[yypt-0].expr
+				yyVAL.typ = exprType
+				yyVAL.expr = yyS.expr[yypt-0]
 			} else {
-				parser.yyVAL.expr = &ast.UnaryOperationExpr{Op: opcode.Not, V: yyS[yypt-0].expr}
+				yyVAL.typ = exprType
+				yyVAL.expr = &ast.UnaryOperationExpr{Op: opcode.Not, V: yyS.expr[yypt-0]}
 			}
 		}
 	case 341:
 		{
-			parser.yyVAL.expr = &ast.IsTruthExpr{Expr: yyS[yypt-2].expr, Not: !yyS[yypt-1].item.(bool), True: int64(1)}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.IsTruthExpr{Expr: yyS.expr[yypt-2], Not: !yyS.item[yypt-1].(bool), True: int64(1)}
 		}
 	case 342:
 		{
-			parser.yyVAL.expr = &ast.IsTruthExpr{Expr: yyS[yypt-2].expr, Not: !yyS[yypt-1].item.(bool), True: int64(0)}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.IsTruthExpr{Expr: yyS.expr[yypt-2], Not: !yyS.item[yypt-1].(bool), True: int64(0)}
 		}
 	case 343:
 		{
 			/* https://dev.mysql.com/doc/refman/5.7/en/comparison-operators.html#operator_is */
-			parser.yyVAL.expr = &ast.IsNullExpr{Expr: yyS[yypt-2].expr, Not: !yyS[yypt-1].item.(bool)}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.IsNullExpr{Expr: yyS.expr[yypt-2], Not: !yyS.item[yypt-1].(bool)}
 		}
 	case 345:
 		{
-			parser.yyVAL.expr = &ast.MaxValueExpr{}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.MaxValueExpr{}
 		}
 	case 346:
 		{
-			parser.yyVAL.expr = yyS[yypt-0].expr
+			yyVAL.typ = exprType
+			yyVAL.expr = yyS.expr[yypt-0]
 		}
 	case 351:
 		{
-			parser.yyVAL.item = []ast.ExprNode{yyS[yypt-0].expr}
+			yyVAL.typ = itemType
+			yyVAL.item = []ast.ExprNode{yyS.expr[yypt-0]}
 		}
 	case 352:
 		{
-			parser.yyVAL.item = append(yyS[yypt-2].item.([]ast.ExprNode), yyS[yypt-0].expr)
+			yyVAL.typ = itemType
+			yyVAL.item = append(yyS.item[yypt-2].([]ast.ExprNode), yyS.expr[yypt-0])
 		}
 	case 353:
 		{
-			parser.yyVAL.item = []ast.ExprNode{yyS[yypt-0].expr}
+			yyVAL.typ = itemType
+			yyVAL.item = []ast.ExprNode{yyS.expr[yypt-0]}
 		}
 	case 354:
 		{
-			parser.yyVAL.item = append(yyS[yypt-2].item.([]ast.ExprNode), yyS[yypt-0].expr)
+			yyVAL.typ = itemType
+			yyVAL.item = append(yyS.item[yypt-2].([]ast.ExprNode), yyS.expr[yypt-0])
 		}
 	case 355:
 		{
-			parser.yyVAL.item = []ast.ExprNode{}
+			yyVAL.typ = itemType
+			yyVAL.item = []ast.ExprNode{}
 		}
 	case 357:
 		{
-			parser.yyVAL.item = []ast.ExprNode{}
+			yyVAL.typ = itemType
+			yyVAL.item = []ast.ExprNode{}
 		}
 	case 358:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0]
 		}
 	case 359:
 		{
-			expr := ast.NewValueExpr(yyS[yypt-0].item)
-			parser.yyVAL.item = []ast.ExprNode{expr}
+			expr := ast.NewValueExpr(yyS.item[yypt-0])
+			yyVAL.typ = itemType
+			yyVAL.item = []ast.ExprNode{expr}
 		}
 	case 360:
 		{
-			parser.yyVAL.expr = &ast.IsNullExpr{Expr: yyS[yypt-2].expr, Not: !yyS[yypt-1].item.(bool)}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.IsNullExpr{Expr: yyS.expr[yypt-2], Not: !yyS.item[yypt-1].(bool)}
 		}
 	case 361:
 		{
-			parser.yyVAL.expr = &ast.BinaryOperationExpr{Op: yyS[yypt-1].item.(opcode.Op), L: yyS[yypt-2].expr, R: yyS[yypt-0].expr}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.BinaryOperationExpr{Op: yyS.item[yypt-1].(opcode.Op), L: yyS.expr[yypt-2], R: yyS.expr[yypt-0]}
 		}
 	case 362:
 		{
-			sq := yyS[yypt-0].expr.(*ast.SubqueryExpr)
+			sq := yyS.expr[yypt-0].(*ast.SubqueryExpr)
 			sq.MultiRows = true
-			parser.yyVAL.expr = &ast.CompareSubqueryExpr{Op: yyS[yypt-2].item.(opcode.Op), L: yyS[yypt-3].expr, R: sq, All: yyS[yypt-1].item.(bool)}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.CompareSubqueryExpr{Op: yyS.item[yypt-2].(opcode.Op), L: yyS.expr[yypt-3], R: sq, All: yyS.item[yypt-1].(bool)}
 		}
 	case 363:
 		{
-			v := yyS[yypt-2].ident
+			v := yyS.ident[yypt-2]
 			v = strings.TrimPrefix(v, "@")
 			variable := &ast.VariableExpr{
 				Name:     v,
 				IsGlobal: false,
 				IsSystem: false,
-				Value:    yyS[yypt-0].expr,
+				Value:    yyS.expr[yypt-0],
 			}
-			parser.yyVAL.expr = &ast.BinaryOperationExpr{Op: yyS[yypt-3].item.(opcode.Op), L: yyS[yypt-4].expr, R: variable}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.BinaryOperationExpr{Op: yyS.item[yypt-3].(opcode.Op), L: yyS.expr[yypt-4], R: variable}
 		}
 	case 365:
 		{
-			parser.yyVAL.item = opcode.GE
+			yyVAL.typ = itemType
+			yyVAL.item = opcode.GE
 		}
 	case 366:
 		{
-			parser.yyVAL.item = opcode.GT
+			yyVAL.typ = itemType
+			yyVAL.item = opcode.GT
 		}
 	case 367:
 		{
-			parser.yyVAL.item = opcode.LE
+			yyVAL.typ = itemType
+			yyVAL.item = opcode.LE
 		}
 	case 368:
 		{
-			parser.yyVAL.item = opcode.LT
+			yyVAL.typ = itemType
+			yyVAL.item = opcode.LT
 		}
 	case 369:
 		{
-			parser.yyVAL.item = opcode.NE
+			yyVAL.typ = itemType
+			yyVAL.item = opcode.NE
 		}
 	case 370:
 		{
-			parser.yyVAL.item = opcode.NE
+			yyVAL.typ = itemType
+			yyVAL.item = opcode.NE
 		}
 	case 371:
 		{
-			parser.yyVAL.item = opcode.EQ
+			yyVAL.typ = itemType
+			yyVAL.item = opcode.EQ
 		}
 	case 372:
 		{
-			parser.yyVAL.item = opcode.NullEQ
+			yyVAL.typ = itemType
+			yyVAL.item = opcode.NullEQ
 		}
 	case 373:
 		{
-			parser.yyVAL.item = true
+			yyVAL.typ = itemType
+			yyVAL.item = true
 		}
 	case 374:
 		{
-			parser.yyVAL.item = false
+			yyVAL.typ = itemType
+			yyVAL.item = false
 		}
 	case 375:
 		{
-			parser.yyVAL.item = true
+			yyVAL.typ = itemType
+			yyVAL.item = true
 		}
 	case 376:
 		{
-			parser.yyVAL.item = false
+			yyVAL.typ = itemType
+			yyVAL.item = false
 		}
 	case 377:
 		{
-			parser.yyVAL.item = true
+			yyVAL.typ = itemType
+			yyVAL.item = true
 		}
 	case 378:
 		{
-			parser.yyVAL.item = false
+			yyVAL.typ = itemType
+			yyVAL.item = false
 		}
 	case 379:
 		{
-			parser.yyVAL.item = true
+			yyVAL.typ = itemType
+			yyVAL.item = true
 		}
 	case 380:
 		{
-			parser.yyVAL.item = false
+			yyVAL.typ = itemType
+			yyVAL.item = false
 		}
 	case 381:
 		{
-			parser.yyVAL.item = true
+			yyVAL.typ = itemType
+			yyVAL.item = true
 		}
 	case 382:
 		{
-			parser.yyVAL.item = false
+			yyVAL.typ = itemType
+			yyVAL.item = false
 		}
 	case 383:
 		{
-			parser.yyVAL.item = false
+			yyVAL.typ = itemType
+			yyVAL.item = false
 		}
 	case 384:
 		{
-			parser.yyVAL.item = false
+			yyVAL.typ = itemType
+			yyVAL.item = false
 		}
 	case 385:
 		{
-			parser.yyVAL.item = true
+			yyVAL.typ = itemType
+			yyVAL.item = true
 		}
 	case 386:
 		{
-			parser.yyVAL.expr = &ast.PatternInExpr{Expr: yyS[yypt-4].expr, Not: !yyS[yypt-3].item.(bool), List: yyS[yypt-1].item.([]ast.ExprNode)}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.PatternInExpr{Expr: yyS.expr[yypt-4], Not: !yyS.item[yypt-3].(bool), List: yyS.item[yypt-1].([]ast.ExprNode)}
 		}
 	case 387:
 		{
-			sq := yyS[yypt-0].expr.(*ast.SubqueryExpr)
+			sq := yyS.expr[yypt-0].(*ast.SubqueryExpr)
 			sq.MultiRows = true
-			parser.yyVAL.expr = &ast.PatternInExpr{Expr: yyS[yypt-2].expr, Not: !yyS[yypt-1].item.(bool), Sel: sq}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.PatternInExpr{Expr: yyS.expr[yypt-2], Not: !yyS.item[yypt-1].(bool), Sel: sq}
 		}
 	case 388:
 		{
-			parser.yyVAL.expr = &ast.BetweenExpr{
-				Expr:  yyS[yypt-4].expr,
-				Left:  yyS[yypt-2].expr,
-				Right: yyS[yypt-0].expr,
-				Not:   !yyS[yypt-3].item.(bool),
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.BetweenExpr{
+				Expr:  yyS.expr[yypt-4],
+				Left:  yyS.expr[yypt-2],
+				Right: yyS.expr[yypt-0],
+				Not:   !yyS.item[yypt-3].(bool),
 			}
 		}
 	case 389:
 		{
-			escape := yyS[yypt-0].item.(string)
+			escape := yyS.item[yypt-0].(string)
 			if len(escape) > 1 {
 				yylex.AppendError(ErrWrongArguments.GenWithStackByArgs("ESCAPE"))
 				return 1
 			} else if len(escape) == 0 {
 				escape = "\\"
 			}
-			parser.yyVAL.expr = &ast.PatternLikeExpr{
-				Expr:    yyS[yypt-3].expr,
-				Pattern: yyS[yypt-1].expr,
-				Not:     !yyS[yypt-2].item.(bool),
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.PatternLikeExpr{
+				Expr:    yyS.expr[yypt-3],
+				Pattern: yyS.expr[yypt-1],
+				Not:     !yyS.item[yypt-2].(bool),
 				Escape:  escape[0],
 			}
 		}
 	case 390:
 		{
-			parser.yyVAL.expr = &ast.PatternRegexpExpr{Expr: yyS[yypt-2].expr, Pattern: yyS[yypt-0].expr, Not: !yyS[yypt-1].item.(bool)}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.PatternRegexpExpr{Expr: yyS.expr[yypt-2], Pattern: yyS.expr[yypt-0], Not: !yyS.item[yypt-1].(bool)}
 		}
 	case 394:
 		{
-			parser.yyVAL.item = "\\"
+			yyVAL.typ = itemType
+			yyVAL.item = "\\"
 		}
 	case 395:
 		{
-			parser.yyVAL.item = yyS[yypt-0].ident
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.ident[yypt-0]
 		}
 	case 396:
 		{
-			parser.yyVAL.item = &ast.SelectField{WildCard: &ast.WildCardField{}}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.SelectField{WildCard: &ast.WildCardField{}}
 		}
 	case 397:
 		{
-			wildCard := &ast.WildCardField{Table: model.NewCIStr(yyS[yypt-2].ident)}
-			parser.yyVAL.item = &ast.SelectField{WildCard: wildCard}
+			wildCard := &ast.WildCardField{Table: model.NewCIStr(yyS.ident[yypt-2])}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.SelectField{WildCard: wildCard}
 		}
 	case 398:
 		{
-			wildCard := &ast.WildCardField{Schema: model.NewCIStr(yyS[yypt-4].ident), Table: model.NewCIStr(yyS[yypt-2].ident)}
-			parser.yyVAL.item = &ast.SelectField{WildCard: wildCard}
+			wildCard := &ast.WildCardField{Schema: model.NewCIStr(yyS.ident[yypt-4]), Table: model.NewCIStr(yyS.ident[yypt-2])}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.SelectField{WildCard: wildCard}
 		}
 	case 399:
 		{
-			expr := yyS[yypt-1].expr
-			asName := yyS[yypt-0].item.(string)
-			parser.yyVAL.item = &ast.SelectField{Expr: expr, AsName: model.NewCIStr(asName)}
+			expr := yyS.expr[yypt-1]
+			asName := yyS.item[yypt-0].(string)
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.SelectField{Expr: expr, AsName: model.NewCIStr(asName)}
 		}
 	case 400:
 		{
@@ -10143,110 +10487,132 @@ yynewstate:
 			* ODBC escape syntax.
 			* See https://dev.mysql.com/doc/refman/5.7/en/expressions.html
 			 */
-			expr := yyS[yypt-2].expr
-			asName := yyS[yypt-0].item.(string)
-			parser.yyVAL.item = &ast.SelectField{Expr: expr, AsName: model.NewCIStr(asName)}
+			expr := yyS.expr[yypt-2]
+			asName := yyS.item[yypt-0].(string)
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.SelectField{Expr: expr, AsName: model.NewCIStr(asName)}
 		}
 	case 401:
 		{
-			parser.yyVAL.item = ""
+			yyVAL.typ = itemType
+			yyVAL.item = ""
 		}
 	case 402:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0]
 		}
 	case 403:
 		{
-			parser.yyVAL.item = yyS[yypt-0].ident
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.ident[yypt-0]
 		}
 	case 404:
 		{
-			parser.yyVAL.item = yyS[yypt-0].ident
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.ident[yypt-0]
 		}
 	case 405:
 		{
-			parser.yyVAL.item = yyS[yypt-0].ident
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.ident[yypt-0]
 		}
 	case 406:
 		{
-			parser.yyVAL.item = yyS[yypt-0].ident
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.ident[yypt-0]
 		}
 	case 407:
 		{
-			field := yyS[yypt-0].item.(*ast.SelectField)
-			field.Offset = parser.startOffset(&yyS[yypt])
-			parser.yyVAL.item = []*ast.SelectField{field}
+			field := yyS.item[yypt-0].(*ast.SelectField)
+			field.Offset = yyS.offset[yypt]
+			yyVAL.typ = itemType
+			yyVAL.item = []*ast.SelectField{field}
 		}
 	case 408:
 		{
 
-			fl := yyS[yypt-2].item.([]*ast.SelectField)
+			fl := yyS.item[yypt-2].([]*ast.SelectField)
 			last := fl[len(fl)-1]
 			if last.Expr != nil && last.AsName.O == "" {
-				lastEnd := parser.endOffset(&yyS[yypt-1])
+				lastEnd := parser.endOffset(yyS.offset[yypt-1])
 				last.SetText(parser.src[last.Offset:lastEnd])
 			}
-			newField := yyS[yypt-0].item.(*ast.SelectField)
-			newField.Offset = parser.startOffset(&yyS[yypt])
-			parser.yyVAL.item = append(fl, newField)
+			newField := yyS.item[yypt-0].(*ast.SelectField)
+			newField.Offset = yyS.offset[yypt]
+			yyVAL.typ = itemType
+			yyVAL.item = append(fl, newField)
 		}
 	case 409:
 		{
-			parser.yyVAL.item = &ast.GroupByClause{Items: yyS[yypt-0].item.([]*ast.ByItem)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.GroupByClause{Items: yyS.item[yypt-0].([]*ast.ByItem)}
 		}
 	case 410:
 		{
-			parser.yyVAL.item = nil
+			yyVAL.typ = itemType
+			yyVAL.item = nil
 		}
 	case 411:
 		{
-			parser.yyVAL.item = &ast.HavingClause{Expr: yyS[yypt-0].expr}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.HavingClause{Expr: yyS.expr[yypt-0]}
 		}
 	case 412:
 		{
-			parser.yyVAL.item = false
+			yyVAL.typ = itemType
+			yyVAL.item = false
 		}
 	case 413:
 		{
-			parser.yyVAL.item = true
+			yyVAL.typ = itemType
+			yyVAL.item = true
 		}
 	case 414:
 		{
-			parser.yyVAL.item = false
+			yyVAL.typ = itemType
+			yyVAL.item = false
 		}
 	case 415:
 		{
-			parser.yyVAL.item = true
+			yyVAL.typ = itemType
+			yyVAL.item = true
 		}
 	case 416:
 		{
-			parser.yyVAL.item = false
+			yyVAL.typ = itemType
+			yyVAL.item = false
 		}
 	case 417:
 		{
-			parser.yyVAL.item = true
+			yyVAL.typ = itemType
+			yyVAL.item = true
 		}
 	case 418:
 		{
-			parser.yyVAL.item = ""
+			yyVAL.typ = itemType
+			yyVAL.item = ""
 		}
 	case 419:
 		{
 			//"index name"
-			parser.yyVAL.item = yyS[yypt-0].ident
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.ident[yypt-0]
 		}
 	case 420:
 		{
-			parser.yyVAL.item = nil
+			yyVAL.typ = itemType
+			yyVAL.item = nil
 		}
 	case 421:
 		{
 			// Merge the options
-			if yyS[yypt-1].item == nil {
-				parser.yyVAL.item = yyS[yypt-0].item
+			if yyS.item[yypt-1] == nil {
+				yyVAL.typ = itemType
+				yyVAL.item = yyS.item[yypt-0]
 			} else {
-				opt1 := yyS[yypt-1].item.(*ast.IndexOption)
-				opt2 := yyS[yypt-0].item.(*ast.IndexOption)
+				opt1 := yyS.item[yypt-1].(*ast.IndexOption)
+				opt2 := yyS.item[yypt-0].(*ast.IndexOption)
 				if len(opt2.Comment) > 0 {
 					opt1.Comment = opt2.Comment
 				} else if opt2.Tp != 0 {
@@ -10254,257 +10620,312 @@ yynewstate:
 				} else if opt2.KeyBlockSize > 0 {
 					opt1.KeyBlockSize = opt2.KeyBlockSize
 				}
-				parser.yyVAL.item = opt1
+				yyVAL.typ = itemType
+				yyVAL.item = opt1
 			}
 		}
 	case 422:
 		{
-			parser.yyVAL.item = &ast.IndexOption{
-				KeyBlockSize: yyS[yypt-0].item.(uint64),
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.IndexOption{
+				KeyBlockSize: yyS.item[yypt-0].(uint64),
 			}
 		}
 	case 423:
 		{
-			parser.yyVAL.item = &ast.IndexOption{
-				Tp: yyS[yypt-0].item.(model.IndexType),
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.IndexOption{
+				Tp: yyS.item[yypt-0].(model.IndexType),
 			}
 		}
 	case 424:
 		{
-			parser.yyVAL.item = &ast.IndexOption{
-				Comment: yyS[yypt-0].ident,
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.IndexOption{
+				Comment: yyS.ident[yypt-0],
 			}
 		}
 	case 425:
 		{
-			parser.yyVAL.item = model.IndexTypeBtree
+			yyVAL.typ = itemType
+			yyVAL.item = model.IndexTypeBtree
 		}
 	case 426:
 		{
-			parser.yyVAL.item = model.IndexTypeHash
+			yyVAL.typ = itemType
+			yyVAL.item = model.IndexTypeHash
 		}
 	case 427:
 		{
-			parser.yyVAL.item = nil
+			yyVAL.typ = itemType
+			yyVAL.item = nil
 		}
 	case 428:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0]
+		}
+	case 429:
+		{
+			yyVAL.typ = identType
+			yyVAL.ident = yyS.ident[yypt-0]
 		}
 	case 709:
 		{
-			x := yyS[yypt-1].item.(*ast.InsertStmt)
-			x.Priority = yyS[yypt-5].item.(mysql.PriorityEnum)
-			x.IgnoreErr = yyS[yypt-4].item.(bool)
+			x := yyS.item[yypt-1].(*ast.InsertStmt)
+			x.Priority = yyS.item[yypt-5].(mysql.PriorityEnum)
+			x.IgnoreErr = yyS.item[yypt-4].(bool)
 			// Wraps many layers here so that it can be processed the same way as select statement.
-			ts := &ast.TableSource{Source: yyS[yypt-2].item.(*ast.TableName)}
+			ts := &ast.TableSource{Source: yyS.item[yypt-2].(*ast.TableName)}
 			x.Table = &ast.TableRefsClause{TableRefs: &ast.Join{Left: ts}}
-			if yyS[yypt-0].item != nil {
-				x.OnDuplicate = yyS[yypt-0].item.([]*ast.Assignment)
+			if yyS.item[yypt-0] != nil {
+				x.OnDuplicate = yyS.item[yypt-0].([]*ast.Assignment)
 			}
-			parser.yyVAL.statement = x
+			yyVAL.typ = statementType
+			yyVAL.statement = x
 		}
 	case 712:
 		{
-			parser.yyVAL.item = &ast.InsertStmt{
-				Columns: yyS[yypt-3].item.([]*ast.ColumnName),
-				Lists:   yyS[yypt-0].item.([][]ast.ExprNode),
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.InsertStmt{
+				Columns: yyS.item[yypt-3].([]*ast.ColumnName),
+				Lists:   yyS.item[yypt-0].([][]ast.ExprNode),
 			}
 		}
 	case 713:
 		{
-			parser.yyVAL.item = &ast.InsertStmt{Columns: yyS[yypt-2].item.([]*ast.ColumnName), Select: yyS[yypt-0].statement.(*ast.SelectStmt)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.InsertStmt{Columns: yyS.item[yypt-2].([]*ast.ColumnName), Select: yyS.statement[yypt-0].(*ast.SelectStmt)}
 		}
 	case 714:
 		{
-			parser.yyVAL.item = &ast.InsertStmt{Columns: yyS[yypt-4].item.([]*ast.ColumnName), Select: yyS[yypt-1].statement.(*ast.SelectStmt)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.InsertStmt{Columns: yyS.item[yypt-4].([]*ast.ColumnName), Select: yyS.statement[yypt-1].(*ast.SelectStmt)}
 		}
 	case 715:
 		{
-			parser.yyVAL.item = &ast.InsertStmt{Columns: yyS[yypt-2].item.([]*ast.ColumnName), Select: yyS[yypt-0].statement.(*ast.UnionStmt)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.InsertStmt{Columns: yyS.item[yypt-2].([]*ast.ColumnName), Select: yyS.statement[yypt-0].(*ast.UnionStmt)}
 		}
 	case 716:
 		{
-			parser.yyVAL.item = &ast.InsertStmt{Lists: yyS[yypt-0].item.([][]ast.ExprNode)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.InsertStmt{Lists: yyS.item[yypt-0].([][]ast.ExprNode)}
 		}
 	case 717:
 		{
-			parser.yyVAL.item = &ast.InsertStmt{Select: yyS[yypt-1].statement.(*ast.SelectStmt)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.InsertStmt{Select: yyS.statement[yypt-1].(*ast.SelectStmt)}
 		}
 	case 718:
 		{
-			parser.yyVAL.item = &ast.InsertStmt{Select: yyS[yypt-0].statement.(*ast.SelectStmt)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.InsertStmt{Select: yyS.statement[yypt-0].(*ast.SelectStmt)}
 		}
 	case 719:
 		{
-			parser.yyVAL.item = &ast.InsertStmt{Select: yyS[yypt-0].statement.(*ast.UnionStmt)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.InsertStmt{Select: yyS.statement[yypt-0].(*ast.UnionStmt)}
 		}
 	case 720:
 		{
-			parser.yyVAL.item = &ast.InsertStmt{Setlist: yyS[yypt-0].item.([]*ast.Assignment)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.InsertStmt{Setlist: yyS.item[yypt-0].([]*ast.Assignment)}
 		}
 	case 723:
 		{
-			parser.yyVAL.item = [][]ast.ExprNode{yyS[yypt-0].item.([]ast.ExprNode)}
+			yyVAL.typ = itemType
+			yyVAL.item = [][]ast.ExprNode{yyS.item[yypt-0].([]ast.ExprNode)}
 		}
 	case 724:
 		{
-			parser.yyVAL.item = append(yyS[yypt-2].item.([][]ast.ExprNode), yyS[yypt-0].item.([]ast.ExprNode))
+			yyVAL.typ = itemType
+			yyVAL.item = append(yyS.item[yypt-2].([][]ast.ExprNode), yyS.item[yypt-0].([]ast.ExprNode))
 		}
 	case 725:
 		{
-			parser.yyVAL.item = yyS[yypt-1].item
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-1]
 		}
 	case 726:
 		{
-			parser.yyVAL.item = []ast.ExprNode{}
+			yyVAL.typ = itemType
+			yyVAL.item = []ast.ExprNode{}
 		}
 	case 728:
 		{
-			parser.yyVAL.item = append(yyS[yypt-2].item.([]ast.ExprNode), yyS[yypt-0].expr)
+			yyVAL.typ = itemType
+			yyVAL.item = append(yyS.item[yypt-2].([]ast.ExprNode), yyS.expr[yypt-0])
 		}
 	case 729:
 		{
-			parser.yyVAL.item = []ast.ExprNode{yyS[yypt-0].expr}
+			yyVAL.typ = itemType
+			yyVAL.item = []ast.ExprNode{yyS.expr[yypt-0]}
 		}
 	case 731:
 		{
-			parser.yyVAL.expr = &ast.DefaultExpr{}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.DefaultExpr{}
 		}
 	case 732:
 		{
-			parser.yyVAL.item = &ast.Assignment{
-				Column: yyS[yypt-2].item.(*ast.ColumnName),
-				Expr:   yyS[yypt-0].expr,
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.Assignment{
+				Column: yyS.item[yypt-2].(*ast.ColumnName),
+				Expr:   yyS.expr[yypt-0],
 			}
 		}
 	case 733:
 		{
-			parser.yyVAL.item = []*ast.Assignment{}
+			yyVAL.typ = itemType
+			yyVAL.item = []*ast.Assignment{}
 		}
 	case 734:
 		{
-			parser.yyVAL.item = []*ast.Assignment{yyS[yypt-0].item.(*ast.Assignment)}
+			yyVAL.typ = itemType
+			yyVAL.item = []*ast.Assignment{yyS.item[yypt-0].(*ast.Assignment)}
 		}
 	case 735:
 		{
-			parser.yyVAL.item = append(yyS[yypt-2].item.([]*ast.Assignment), yyS[yypt-0].item.(*ast.Assignment))
+			yyVAL.typ = itemType
+			yyVAL.item = append(yyS.item[yypt-2].([]*ast.Assignment), yyS.item[yypt-0].(*ast.Assignment))
 		}
 	case 736:
 		{
-			parser.yyVAL.item = nil
+			yyVAL.typ = itemType
+			yyVAL.item = nil
 		}
 	case 737:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0]
 		}
 	case 738:
 		{
-			x := yyS[yypt-0].item.(*ast.InsertStmt)
+			x := yyS.item[yypt-0].(*ast.InsertStmt)
 			x.IsReplace = true
-			x.Priority = yyS[yypt-3].item.(mysql.PriorityEnum)
-			ts := &ast.TableSource{Source: yyS[yypt-1].item.(*ast.TableName)}
+			x.Priority = yyS.item[yypt-3].(mysql.PriorityEnum)
+			ts := &ast.TableSource{Source: yyS.item[yypt-1].(*ast.TableName)}
 			x.Table = &ast.TableRefsClause{TableRefs: &ast.Join{Left: ts}}
-			parser.yyVAL.statement = x
+			yyVAL.typ = statementType
+			yyVAL.statement = x
 		}
 	case 739:
 		{
-			parser.yyVAL.ident = ast.DateLiteral
+			yyVAL.typ = identType
+			yyVAL.ident = ast.DateLiteral
 		}
 	case 740:
 		{
-			parser.yyVAL.ident = ast.TimeLiteral
+			yyVAL.typ = identType
+			yyVAL.ident = ast.TimeLiteral
 		}
 	case 741:
 		{
-			parser.yyVAL.ident = ast.TimestampLiteral
+			yyVAL.typ = identType
+			yyVAL.ident = ast.TimestampLiteral
 		}
 	case 742:
 		{
-			parser.yyVAL.expr = ast.NewValueExpr(false)
+			yyVAL.typ = exprType
+			yyVAL.expr = ast.NewValueExpr(false)
 		}
 	case 743:
 		{
-			parser.yyVAL.expr = ast.NewValueExpr(nil)
+			yyVAL.typ = exprType
+			yyVAL.expr = ast.NewValueExpr(nil)
 		}
 	case 744:
 		{
-			parser.yyVAL.expr = ast.NewValueExpr(true)
+			yyVAL.typ = exprType
+			yyVAL.expr = ast.NewValueExpr(true)
 		}
 	case 745:
 		{
-			parser.yyVAL.expr = ast.NewValueExpr(yyS[yypt-0].item)
+			yyVAL.typ = exprType
+			yyVAL.expr = ast.NewValueExpr(yyS.item[yypt-0])
 		}
 	case 746:
 		{
-			parser.yyVAL.expr = ast.NewValueExpr(yyS[yypt-0].item)
+			yyVAL.typ = exprType
+			yyVAL.expr = ast.NewValueExpr(yyS.item[yypt-0])
 		}
 	case 747:
 		{
-			parser.yyVAL.expr = ast.NewValueExpr(yyS[yypt-0].item)
+			yyVAL.typ = exprType
+			yyVAL.expr = ast.NewValueExpr(yyS.item[yypt-0])
 		}
 	case 748:
 		{
-			parser.yyVAL.expr = yyS[yypt-0].expr
+			yyVAL.typ = exprType
+			yyVAL.expr = yyS.expr[yypt-0]
 		}
 	case 749:
 		{
 			// See https://dev.mysql.com/doc/refman/5.7/en/charset-literal.html
-			co, err := charset.GetDefaultCollation(yyS[yypt-1].ident)
+			co, err := charset.GetDefaultCollation(yyS.ident[yypt-1])
 			if err != nil {
-				yylex.AppendError(yylex.Errorf("Get collation error for charset: %s", yyS[yypt-1].ident))
+				yylex.AppendError(yylex.Errorf("Get collation error for charset: %s", yyS.ident[yypt-1]))
 				return 1
 			}
-			expr := ast.NewValueExpr(yyS[yypt-0].ident)
+			expr := ast.NewValueExpr(yyS.ident[yypt-0])
 			tp := expr.GetType()
-			tp.Charset = yyS[yypt-1].ident
+			tp.Charset = yyS.ident[yypt-1]
 			tp.Collate = co
 			if tp.Collate == charset.CollationBin {
 				tp.Flag |= mysql.BinaryFlag
 			}
-			parser.yyVAL.expr = expr
+			yyVAL.typ = exprType
+			yyVAL.expr = expr
 		}
 	case 750:
 		{
-			parser.yyVAL.expr = ast.NewValueExpr(yyS[yypt-0].item)
+			yyVAL.typ = exprType
+			yyVAL.expr = ast.NewValueExpr(yyS.item[yypt-0])
 		}
 	case 751:
 		{
-			parser.yyVAL.expr = ast.NewValueExpr(yyS[yypt-0].item)
+			yyVAL.typ = exprType
+			yyVAL.expr = ast.NewValueExpr(yyS.item[yypt-0])
 		}
 	case 752:
 		{
-			expr := ast.NewValueExpr(yyS[yypt-0].ident)
-			parser.yyVAL.expr = expr
+			expr := ast.NewValueExpr(yyS.ident[yypt-0])
+			yyVAL.typ = exprType
+			yyVAL.expr = expr
 		}
 	case 753:
 		{
-			valExpr := yyS[yypt-1].expr.(ast.ValueExpr)
+			valExpr := yyS.expr[yypt-1].(ast.ValueExpr)
 			strLit := valExpr.GetString()
-			expr := ast.NewValueExpr(strLit + yyS[yypt-0].ident)
+			expr := ast.NewValueExpr(strLit + yyS.ident[yypt-0])
 			// Fix #4239, use first string literal as projection name.
 			if valExpr.GetProjectionOffset() >= 0 {
 				expr.SetProjectionOffset(valExpr.GetProjectionOffset())
 			} else {
 				expr.SetProjectionOffset(len(strLit))
 			}
-			parser.yyVAL.expr = expr
+			yyVAL.typ = exprType
+			yyVAL.expr = expr
 		}
 	case 754:
 		{
-			parser.yyVAL.item = &ast.OrderByClause{Items: yyS[yypt-0].item.([]*ast.ByItem)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.OrderByClause{Items: yyS.item[yypt-0].([]*ast.ByItem)}
 		}
 	case 755:
 		{
-			parser.yyVAL.item = []*ast.ByItem{yyS[yypt-0].item.(*ast.ByItem)}
+			yyVAL.typ = itemType
+			yyVAL.item = []*ast.ByItem{yyS.item[yypt-0].(*ast.ByItem)}
 		}
 	case 756:
 		{
-			parser.yyVAL.item = append(yyS[yypt-2].item.([]*ast.ByItem), yyS[yypt-0].item.(*ast.ByItem))
+			yyVAL.typ = itemType
+			yyVAL.item = append(yyS.item[yypt-2].([]*ast.ByItem), yyS.item[yypt-0].(*ast.ByItem))
 		}
 	case 757:
 		{
-			expr := yyS[yypt-1].expr
+			expr := yyS.expr[yypt-1]
 			valueExpr, ok := expr.(ast.ValueExpr)
 			if ok {
 				position, isPosition := valueExpr.GetValue().(int64)
@@ -10512,186 +10933,223 @@ yynewstate:
 					expr = &ast.PositionExpr{N: int(position)}
 				}
 			}
-			parser.yyVAL.item = &ast.ByItem{Expr: expr, Desc: yyS[yypt-0].item.(bool)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ByItem{Expr: expr, Desc: yyS.item[yypt-0].(bool)}
 		}
 	case 758:
 		{
-			parser.yyVAL.item = false // ASC by default
+			yyVAL.typ = itemType
+			yyVAL.item = false // ASC by default
 		}
 	case 759:
 		{
-			parser.yyVAL.item = false
+			yyVAL.typ = itemType
+			yyVAL.item = false
 		}
 	case 760:
 		{
-			parser.yyVAL.item = true
+			yyVAL.typ = itemType
+			yyVAL.item = true
 		}
 	case 761:
 		{
-			parser.yyVAL.item = nil
+			yyVAL.typ = itemType
+			yyVAL.item = nil
 		}
 	case 762:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0]
 		}
 	case 763:
 		{
-			parser.yyVAL.expr = &ast.BinaryOperationExpr{Op: opcode.Or, L: yyS[yypt-2].expr, R: yyS[yypt-0].expr}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.BinaryOperationExpr{Op: opcode.Or, L: yyS.expr[yypt-2], R: yyS.expr[yypt-0]}
 		}
 	case 764:
 		{
-			parser.yyVAL.expr = &ast.BinaryOperationExpr{Op: opcode.And, L: yyS[yypt-2].expr, R: yyS[yypt-0].expr}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.BinaryOperationExpr{Op: opcode.And, L: yyS.expr[yypt-2], R: yyS.expr[yypt-0]}
 		}
 	case 765:
 		{
-			parser.yyVAL.expr = &ast.BinaryOperationExpr{Op: opcode.LeftShift, L: yyS[yypt-2].expr, R: yyS[yypt-0].expr}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.BinaryOperationExpr{Op: opcode.LeftShift, L: yyS.expr[yypt-2], R: yyS.expr[yypt-0]}
 		}
 	case 766:
 		{
-			parser.yyVAL.expr = &ast.BinaryOperationExpr{Op: opcode.RightShift, L: yyS[yypt-2].expr, R: yyS[yypt-0].expr}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.BinaryOperationExpr{Op: opcode.RightShift, L: yyS.expr[yypt-2], R: yyS.expr[yypt-0]}
 		}
 	case 767:
 		{
-			parser.yyVAL.expr = &ast.BinaryOperationExpr{Op: opcode.Plus, L: yyS[yypt-2].expr, R: yyS[yypt-0].expr}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.BinaryOperationExpr{Op: opcode.Plus, L: yyS.expr[yypt-2], R: yyS.expr[yypt-0]}
 		}
 	case 768:
 		{
-			parser.yyVAL.expr = &ast.BinaryOperationExpr{Op: opcode.Minus, L: yyS[yypt-2].expr, R: yyS[yypt-0].expr}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.BinaryOperationExpr{Op: opcode.Minus, L: yyS.expr[yypt-2], R: yyS.expr[yypt-0]}
 		}
 	case 769:
 		{
-			parser.yyVAL.expr = &ast.FuncCallExpr{
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCallExpr{
 				FnName: model.NewCIStr("DATE_ADD"),
 				Args: []ast.ExprNode{
-					yyS[yypt-4].expr,
-					yyS[yypt-1].expr,
-					ast.NewValueExpr(yyS[yypt-0].ident),
+					yyS.expr[yypt-4],
+					yyS.expr[yypt-1],
+					ast.NewValueExpr(yyS.ident[yypt-0]),
 				},
 			}
 		}
 	case 770:
 		{
-			parser.yyVAL.expr = &ast.FuncCallExpr{
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCallExpr{
 				FnName: model.NewCIStr("DATE_SUB"),
 				Args: []ast.ExprNode{
-					yyS[yypt-4].expr,
-					yyS[yypt-1].expr,
-					ast.NewValueExpr(yyS[yypt-0].ident),
+					yyS.expr[yypt-4],
+					yyS.expr[yypt-1],
+					ast.NewValueExpr(yyS.ident[yypt-0]),
 				},
 			}
 		}
 	case 771:
 		{
-			parser.yyVAL.expr = &ast.BinaryOperationExpr{Op: opcode.Mul, L: yyS[yypt-2].expr, R: yyS[yypt-0].expr}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.BinaryOperationExpr{Op: opcode.Mul, L: yyS.expr[yypt-2], R: yyS.expr[yypt-0]}
 		}
 	case 772:
 		{
-			parser.yyVAL.expr = &ast.BinaryOperationExpr{Op: opcode.Div, L: yyS[yypt-2].expr, R: yyS[yypt-0].expr}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.BinaryOperationExpr{Op: opcode.Div, L: yyS.expr[yypt-2], R: yyS.expr[yypt-0]}
 		}
 	case 773:
 		{
-			parser.yyVAL.expr = &ast.BinaryOperationExpr{Op: opcode.Mod, L: yyS[yypt-2].expr, R: yyS[yypt-0].expr}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.BinaryOperationExpr{Op: opcode.Mod, L: yyS.expr[yypt-2], R: yyS.expr[yypt-0]}
 		}
 	case 774:
 		{
-			parser.yyVAL.expr = &ast.BinaryOperationExpr{Op: opcode.IntDiv, L: yyS[yypt-2].expr, R: yyS[yypt-0].expr}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.BinaryOperationExpr{Op: opcode.IntDiv, L: yyS.expr[yypt-2], R: yyS.expr[yypt-0]}
 		}
 	case 775:
 		{
-			parser.yyVAL.expr = &ast.BinaryOperationExpr{Op: opcode.Mod, L: yyS[yypt-2].expr, R: yyS[yypt-0].expr}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.BinaryOperationExpr{Op: opcode.Mod, L: yyS.expr[yypt-2], R: yyS.expr[yypt-0]}
 		}
 	case 776:
 		{
-			parser.yyVAL.expr = &ast.BinaryOperationExpr{Op: opcode.Xor, L: yyS[yypt-2].expr, R: yyS[yypt-0].expr}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.BinaryOperationExpr{Op: opcode.Xor, L: yyS.expr[yypt-2], R: yyS.expr[yypt-0]}
 		}
 	case 778:
 		{
-			parser.yyVAL.expr = &ast.ColumnNameExpr{Name: &ast.ColumnName{
-				Name: model.NewCIStr(yyS[yypt-0].ident),
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.ColumnNameExpr{Name: &ast.ColumnName{
+				Name: model.NewCIStr(yyS.ident[yypt-0]),
 			}}
 		}
 	case 779:
 		{
-			parser.yyVAL.expr = &ast.ColumnNameExpr{Name: &ast.ColumnName{
-				Table: model.NewCIStr(yyS[yypt-2].ident),
-				Name:  model.NewCIStr(yyS[yypt-0].ident),
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.ColumnNameExpr{Name: &ast.ColumnName{
+				Table: model.NewCIStr(yyS.ident[yypt-2]),
+				Name:  model.NewCIStr(yyS.ident[yypt-0]),
 			}}
 		}
 	case 780:
 		{
-			parser.yyVAL.expr = &ast.ColumnNameExpr{Name: &ast.ColumnName{
-				Table: model.NewCIStr(yyS[yypt-2].ident),
-				Name:  model.NewCIStr(yyS[yypt-0].ident),
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.ColumnNameExpr{Name: &ast.ColumnName{
+				Table: model.NewCIStr(yyS.ident[yypt-2]),
+				Name:  model.NewCIStr(yyS.ident[yypt-0]),
 			}}
 		}
 	case 781:
 		{
-			parser.yyVAL.expr = &ast.ColumnNameExpr{Name: &ast.ColumnName{
-				Schema: model.NewCIStr(yyS[yypt-4].ident),
-				Table:  model.NewCIStr(yyS[yypt-2].ident),
-				Name:   model.NewCIStr(yyS[yypt-0].ident),
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.ColumnNameExpr{Name: &ast.ColumnName{
+				Schema: model.NewCIStr(yyS.ident[yypt-4]),
+				Table:  model.NewCIStr(yyS.ident[yypt-2]),
+				Name:   model.NewCIStr(yyS.ident[yypt-0]),
 			}}
 		}
 	case 786:
 		{
 			// TODO: Create a builtin function hold expr and collation. When do evaluation, convert expr result using the collation.
-			parser.yyVAL.expr = yyS[yypt-2].expr
+			yyVAL.typ = exprType
+			yyVAL.expr = yyS.expr[yypt-2]
 		}
 	case 787:
 		{
-			parser.yyVAL.expr = yyS[yypt-0].item.(*ast.WindowFuncExpr)
+			yyVAL.typ = exprType
+			yyVAL.expr = yyS.item[yypt-0].(*ast.WindowFuncExpr)
 		}
 	case 789:
 		{
-			parser.yyVAL.expr = ast.NewParamMarkerExpr(yyS[yypt].offset)
+			yyVAL.typ = exprType
+			yyVAL.expr = ast.NewParamMarkerExpr(yyS.offset[yypt])
 		}
 	case 792:
 		{
-			parser.yyVAL.expr = &ast.UnaryOperationExpr{Op: opcode.Not, V: yyS[yypt-0].expr}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.UnaryOperationExpr{Op: opcode.Not, V: yyS.expr[yypt-0]}
 		}
 	case 793:
 		{
-			parser.yyVAL.expr = &ast.UnaryOperationExpr{Op: opcode.BitNeg, V: yyS[yypt-0].expr}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.UnaryOperationExpr{Op: opcode.BitNeg, V: yyS.expr[yypt-0]}
 		}
 	case 794:
 		{
-			parser.yyVAL.expr = &ast.UnaryOperationExpr{Op: opcode.Minus, V: yyS[yypt-0].expr}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.UnaryOperationExpr{Op: opcode.Minus, V: yyS.expr[yypt-0]}
 		}
 	case 795:
 		{
-			parser.yyVAL.expr = &ast.UnaryOperationExpr{Op: opcode.Plus, V: yyS[yypt-0].expr}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.UnaryOperationExpr{Op: opcode.Plus, V: yyS.expr[yypt-0]}
 		}
 	case 796:
 		{
-			parser.yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr(ast.Concat), Args: []ast.ExprNode{yyS[yypt-2].expr, yyS[yypt-0].expr}}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr(ast.Concat), Args: []ast.ExprNode{yyS.expr[yypt-2], yyS.expr[yypt-0]}}
 		}
 	case 797:
 		{
-			parser.yyVAL.expr = &ast.UnaryOperationExpr{Op: opcode.Not, V: yyS[yypt-0].expr}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.UnaryOperationExpr{Op: opcode.Not, V: yyS.expr[yypt-0]}
 		}
 	case 799:
 		{
-			startOffset := parser.startOffset(&yyS[yypt-1])
-			endOffset := parser.endOffset(&yyS[yypt])
-			expr := yyS[yypt-1].expr
+			startOffset := yyS.offset[yypt-1]
+			endOffset := parser.endOffset(yyS.offset[yypt])
+			expr := yyS.expr[yypt-1]
 			expr.SetText(parser.src[startOffset:endOffset])
-			parser.yyVAL.expr = &ast.ParenthesesExpr{Expr: expr}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.ParenthesesExpr{Expr: expr}
 		}
 	case 800:
 		{
-			values := append(yyS[yypt-3].item.([]ast.ExprNode), yyS[yypt-1].expr)
-			parser.yyVAL.expr = &ast.RowExpr{Values: values}
+			values := append(yyS.item[yypt-3].([]ast.ExprNode), yyS.expr[yypt-1])
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.RowExpr{Values: values}
 		}
 	case 801:
 		{
-			values := append(yyS[yypt-3].item.([]ast.ExprNode), yyS[yypt-1].expr)
-			parser.yyVAL.expr = &ast.RowExpr{Values: values}
+			values := append(yyS.item[yypt-3].([]ast.ExprNode), yyS.expr[yypt-1])
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.RowExpr{Values: values}
 		}
 	case 802:
 		{
-			sq := yyS[yypt-0].expr.(*ast.SubqueryExpr)
+			sq := yyS.expr[yypt-0].(*ast.SubqueryExpr)
 			sq.Exists = true
-			parser.yyVAL.expr = &ast.ExistsSubqueryExpr{Sel: sq}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.ExistsSubqueryExpr{Sel: sq}
 		}
 	case 803:
 		{
@@ -10699,8 +11157,9 @@ yynewstate:
 			x := types.NewFieldType(mysql.TypeString)
 			x.Charset = charset.CharsetBin
 			x.Collate = charset.CharsetBin
-			parser.yyVAL.expr = &ast.FuncCastExpr{
-				Expr:         yyS[yypt-0].expr,
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCastExpr{
+				Expr:         yyS.expr[yypt-0],
 				Tp:           x,
 				FunctionType: ast.CastBinaryOperator,
 			}
@@ -10708,7 +11167,7 @@ yynewstate:
 	case 804:
 		{
 			/* See https://dev.mysql.com/doc/refman/5.7/en/cast-functions.html#function_cast */
-			tp := yyS[yypt-1].item.(*types.FieldType)
+			tp := yyS.item[yypt-1].(*types.FieldType)
 			defaultFlen, defaultDecimal := mysql.GetDefaultFieldLengthAndDecimalForCast(tp.Tp)
 			if tp.Flen == types.UnspecifiedLength {
 				tp.Flen = defaultFlen
@@ -10716,27 +11175,29 @@ yynewstate:
 			if tp.Decimal == types.UnspecifiedLength {
 				tp.Decimal = defaultDecimal
 			}
-			parser.yyVAL.expr = &ast.FuncCastExpr{
-				Expr:         yyS[yypt-3].expr,
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCastExpr{
+				Expr:         yyS.expr[yypt-3],
 				Tp:           tp,
 				FunctionType: ast.CastFunction,
 			}
 		}
 	case 805:
 		{
-			x := &ast.CaseExpr{WhenClauses: yyS[yypt-2].item.([]*ast.WhenClause)}
-			if yyS[yypt-3].expr != nil {
-				x.Value = yyS[yypt-3].expr
+			x := &ast.CaseExpr{WhenClauses: yyS.item[yypt-2].([]*ast.WhenClause)}
+			if yyS.expr[yypt-3] != nil {
+				x.Value = yyS.expr[yypt-3]
 			}
-			if yyS[yypt-1].item != nil {
-				x.ElseClause = yyS[yypt-1].item.(ast.ExprNode)
+			if yyS.item[yypt-1] != nil {
+				x.ElseClause = yyS.item[yypt-1].(ast.ExprNode)
 			}
-			parser.yyVAL.expr = x
+			yyVAL.typ = exprType
+			yyVAL.expr = x
 		}
 	case 806:
 		{
 			// See https://dev.mysql.com/doc/refman/5.7/en/cast-functions.html#function_convert
-			tp := yyS[yypt-1].item.(*types.FieldType)
+			tp := yyS.item[yypt-1].(*types.FieldType)
 			defaultFlen, defaultDecimal := mysql.GetDefaultFieldLengthAndDecimalForCast(tp.Tp)
 			if tp.Flen == types.UnspecifiedLength {
 				tp.Flen = defaultFlen
@@ -10744,8 +11205,9 @@ yynewstate:
 			if tp.Decimal == types.UnspecifiedLength {
 				tp.Decimal = defaultDecimal
 			}
-			parser.yyVAL.expr = &ast.FuncCastExpr{
-				Expr:         yyS[yypt-3].expr,
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCastExpr{
+				Expr:         yyS.expr[yypt-3],
 				Tp:           tp,
 				FunctionType: ast.CastConvertFunction,
 			}
@@ -10753,624 +11215,751 @@ yynewstate:
 	case 807:
 		{
 			// See https://dev.mysql.com/doc/refman/5.7/en/cast-functions.html#function_convert
-			charset1 := ast.NewValueExpr(yyS[yypt-1].item)
-			parser.yyVAL.expr = &ast.FuncCallExpr{
-				FnName: model.NewCIStr(yyS[yypt-5].ident),
-				Args:   []ast.ExprNode{yyS[yypt-3].expr, charset1},
+			charset1 := ast.NewValueExpr(yyS.item[yypt-1])
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCallExpr{
+				FnName: model.NewCIStr(yyS.ident[yypt-5]),
+				Args:   []ast.ExprNode{yyS.expr[yypt-3], charset1},
 			}
 		}
 	case 808:
 		{
-			parser.yyVAL.expr = &ast.DefaultExpr{Name: yyS[yypt-1].expr.(*ast.ColumnNameExpr).Name}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.DefaultExpr{Name: yyS.expr[yypt-1].(*ast.ColumnNameExpr).Name}
 		}
 	case 809:
 		{
-			parser.yyVAL.expr = &ast.ValuesExpr{Column: yyS[yypt-1].expr.(*ast.ColumnNameExpr)}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.ValuesExpr{Column: yyS.expr[yypt-1].(*ast.ColumnNameExpr)}
 		}
 	case 810:
 		{
-			expr := ast.NewValueExpr(yyS[yypt-0].ident)
-			parser.yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr(ast.JSONExtract), Args: []ast.ExprNode{yyS[yypt-2].expr, expr}}
+			expr := ast.NewValueExpr(yyS.ident[yypt-0])
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr(ast.JSONExtract), Args: []ast.ExprNode{yyS.expr[yypt-2], expr}}
 		}
 	case 811:
 		{
-			expr := ast.NewValueExpr(yyS[yypt-0].ident)
-			extract := &ast.FuncCallExpr{FnName: model.NewCIStr(ast.JSONExtract), Args: []ast.ExprNode{yyS[yypt-2].expr, expr}}
-			parser.yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr(ast.JSONUnquote), Args: []ast.ExprNode{extract}}
+			expr := ast.NewValueExpr(yyS.ident[yypt-0])
+			extract := &ast.FuncCallExpr{FnName: model.NewCIStr(ast.JSONExtract), Args: []ast.ExprNode{yyS.expr[yypt-2], expr}}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr(ast.JSONUnquote), Args: []ast.ExprNode{extract}}
 		}
 	case 814:
 		{
-			parser.yyVAL.item = false
+			yyVAL.typ = itemType
+			yyVAL.item = false
 		}
 	case 815:
 		{
-			parser.yyVAL.item = true
+			yyVAL.typ = itemType
+			yyVAL.item = true
 		}
 	case 816:
 		{
-			parser.yyVAL.item = false
+			yyVAL.typ = itemType
+			yyVAL.item = false
 		}
 	case 818:
 		{
-			parser.yyVAL.item = true
+			yyVAL.typ = itemType
+			yyVAL.item = true
 		}
 	case 821:
 		{
-			parser.yyVAL.item = true
+			yyVAL.typ = itemType
+			yyVAL.item = true
 		}
 	case 863:
 		{
-			parser.yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr(yyS[yypt-3].ident), Args: yyS[yypt-1].item.([]ast.ExprNode)}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr(yyS.ident[yypt-3]), Args: yyS.item[yypt-1].([]ast.ExprNode)}
 		}
 	case 864:
 		{
-			parser.yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr(yyS[yypt-3].ident), Args: yyS[yypt-1].item.([]ast.ExprNode)}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr(yyS.ident[yypt-3]), Args: yyS.item[yypt-1].([]ast.ExprNode)}
 		}
 	case 865:
 		{
-			parser.yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr(yyS[yypt-1].ident)}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr(yyS.ident[yypt-1])}
 		}
 	case 866:
 		{
-			parser.yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr(yyS[yypt-2].ident)}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr(yyS.ident[yypt-2])}
 		}
 	case 867:
 		{
 			args := []ast.ExprNode{}
-			if yyS[yypt-0].item != nil {
-				args = append(args, yyS[yypt-0].item.(ast.ExprNode))
+			if yyS.item[yypt-0] != nil {
+				args = append(args, yyS.item[yypt-0].(ast.ExprNode))
 			}
-			parser.yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr(yyS[yypt-1].ident), Args: args}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr(yyS.ident[yypt-1]), Args: args}
 		}
 	case 868:
 		{
 			nilVal := ast.NewValueExpr(nil)
-			args := yyS[yypt-1].item.([]ast.ExprNode)
-			parser.yyVAL.expr = &ast.FuncCallExpr{
+			args := yyS.item[yypt-1].([]ast.ExprNode)
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCallExpr{
 				FnName: model.NewCIStr(ast.CharFunc),
 				Args:   append(args, nilVal),
 			}
 		}
 	case 869:
 		{
-			charset1 := ast.NewValueExpr(yyS[yypt-1].item)
-			args := yyS[yypt-3].item.([]ast.ExprNode)
-			parser.yyVAL.expr = &ast.FuncCallExpr{
+			charset1 := ast.NewValueExpr(yyS.item[yypt-1])
+			args := yyS.item[yypt-3].([]ast.ExprNode)
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCallExpr{
 				FnName: model.NewCIStr(ast.CharFunc),
 				Args:   append(args, charset1),
 			}
 		}
 	case 870:
 		{
-			expr := ast.NewValueExpr(yyS[yypt-0].ident)
-			parser.yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr(ast.DateLiteral), Args: []ast.ExprNode{expr}}
+			expr := ast.NewValueExpr(yyS.ident[yypt-0])
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr(ast.DateLiteral), Args: []ast.ExprNode{expr}}
 		}
 	case 871:
 		{
-			expr := ast.NewValueExpr(yyS[yypt-0].ident)
-			parser.yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr(ast.TimeLiteral), Args: []ast.ExprNode{expr}}
+			expr := ast.NewValueExpr(yyS.ident[yypt-0])
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr(ast.TimeLiteral), Args: []ast.ExprNode{expr}}
 		}
 	case 872:
 		{
-			expr := ast.NewValueExpr(yyS[yypt-0].ident)
-			parser.yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr(ast.TimestampLiteral), Args: []ast.ExprNode{expr}}
+			expr := ast.NewValueExpr(yyS.ident[yypt-0])
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr(ast.TimestampLiteral), Args: []ast.ExprNode{expr}}
 		}
 	case 873:
 		{
-			parser.yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr(ast.InsertFunc), Args: yyS[yypt-1].item.([]ast.ExprNode)}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr(ast.InsertFunc), Args: yyS.item[yypt-1].([]ast.ExprNode)}
 		}
 	case 874:
 		{
-			parser.yyVAL.expr = &ast.BinaryOperationExpr{Op: opcode.Mod, L: yyS[yypt-3].expr, R: yyS[yypt-1].expr}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.BinaryOperationExpr{Op: opcode.Mod, L: yyS.expr[yypt-3], R: yyS.expr[yypt-1]}
 		}
 	case 875:
 		{
-			parser.yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr(ast.PasswordFunc), Args: yyS[yypt-1].item.([]ast.ExprNode)}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr(ast.PasswordFunc), Args: yyS.item[yypt-1].([]ast.ExprNode)}
 		}
 	case 876:
 		{
 			// This is ODBC syntax for date and time literals.
 			// See: https://dev.mysql.com/doc/refman/5.7/en/date-and-time-literals.html
-			expr := ast.NewValueExpr(yyS[yypt-1].ident)
-			parser.yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr(yyS[yypt-2].ident), Args: []ast.ExprNode{expr}}
+			expr := ast.NewValueExpr(yyS.ident[yypt-1])
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr(yyS.ident[yypt-2]), Args: []ast.ExprNode{expr}}
 		}
 	case 877:
 		{
-			parser.yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr(yyS[yypt-3].ident), Args: yyS[yypt-1].item.([]ast.ExprNode)}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr(yyS.ident[yypt-3]), Args: yyS.item[yypt-1].([]ast.ExprNode)}
 		}
 	case 878:
 		{
-			parser.yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr(yyS[yypt-3].ident), Args: yyS[yypt-1].item.([]ast.ExprNode)}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr(yyS.ident[yypt-3]), Args: yyS.item[yypt-1].([]ast.ExprNode)}
 		}
 	case 879:
 		{
-			parser.yyVAL.expr = &ast.FuncCallExpr{
-				FnName: model.NewCIStr(yyS[yypt-5].ident),
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCallExpr{
+				FnName: model.NewCIStr(yyS.ident[yypt-5]),
 				Args: []ast.ExprNode{
-					yyS[yypt-3].expr,
-					yyS[yypt-1].expr,
+					yyS.expr[yypt-3],
+					yyS.expr[yypt-1],
 					ast.NewValueExpr("DAY"),
 				},
 			}
 		}
 	case 880:
 		{
-			parser.yyVAL.expr = &ast.FuncCallExpr{
-				FnName: model.NewCIStr(yyS[yypt-7].ident),
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCallExpr{
+				FnName: model.NewCIStr(yyS.ident[yypt-7]),
 				Args: []ast.ExprNode{
-					yyS[yypt-5].expr,
-					yyS[yypt-2].expr,
-					ast.NewValueExpr(yyS[yypt-1].ident),
+					yyS.expr[yypt-5],
+					yyS.expr[yypt-2],
+					ast.NewValueExpr(yyS.ident[yypt-1]),
 				},
 			}
 		}
 	case 881:
 		{
-			parser.yyVAL.expr = &ast.FuncCallExpr{
-				FnName: model.NewCIStr(yyS[yypt-7].ident),
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCallExpr{
+				FnName: model.NewCIStr(yyS.ident[yypt-7]),
 				Args: []ast.ExprNode{
-					yyS[yypt-5].expr,
-					yyS[yypt-2].expr,
-					ast.NewValueExpr(yyS[yypt-1].ident),
+					yyS.expr[yypt-5],
+					yyS.expr[yypt-2],
+					ast.NewValueExpr(yyS.ident[yypt-1]),
 				},
 			}
 		}
 	case 882:
 		{
-			timeUnit := ast.NewValueExpr(yyS[yypt-3].ident)
-			parser.yyVAL.expr = &ast.FuncCallExpr{
-				FnName: model.NewCIStr(yyS[yypt-5].ident),
-				Args:   []ast.ExprNode{timeUnit, yyS[yypt-1].expr},
+			timeUnit := ast.NewValueExpr(yyS.ident[yypt-3])
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCallExpr{
+				FnName: model.NewCIStr(yyS.ident[yypt-5]),
+				Args:   []ast.ExprNode{timeUnit, yyS.expr[yypt-1]},
 			}
 		}
 	case 883:
 		{
-			parser.yyVAL.expr = &ast.FuncCallExpr{
-				FnName: model.NewCIStr(yyS[yypt-5].ident),
-				Args:   []ast.ExprNode{ast.NewValueExpr(yyS[yypt-3].ident), yyS[yypt-1].expr},
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCallExpr{
+				FnName: model.NewCIStr(yyS.ident[yypt-5]),
+				Args:   []ast.ExprNode{ast.NewValueExpr(yyS.ident[yypt-3]), yyS.expr[yypt-1]},
 			}
 		}
 	case 884:
 		{
-			parser.yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr(yyS[yypt-5].ident), Args: []ast.ExprNode{yyS[yypt-3].expr, yyS[yypt-1].expr}}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr(yyS.ident[yypt-5]), Args: []ast.ExprNode{yyS.expr[yypt-3], yyS.expr[yypt-1]}}
 		}
 	case 885:
 		{
-			parser.yyVAL.expr = &ast.FuncCallExpr{
-				FnName: model.NewCIStr(yyS[yypt-5].ident),
-				Args:   []ast.ExprNode{yyS[yypt-3].expr, yyS[yypt-1].expr},
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCallExpr{
+				FnName: model.NewCIStr(yyS.ident[yypt-5]),
+				Args:   []ast.ExprNode{yyS.expr[yypt-3], yyS.expr[yypt-1]},
 			}
 		}
 	case 886:
 		{
-			parser.yyVAL.expr = &ast.FuncCallExpr{
-				FnName: model.NewCIStr(yyS[yypt-5].ident),
-				Args:   []ast.ExprNode{yyS[yypt-3].expr, yyS[yypt-1].expr},
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCallExpr{
+				FnName: model.NewCIStr(yyS.ident[yypt-5]),
+				Args:   []ast.ExprNode{yyS.expr[yypt-3], yyS.expr[yypt-1]},
 			}
 		}
 	case 887:
 		{
-			parser.yyVAL.expr = &ast.FuncCallExpr{
-				FnName: model.NewCIStr(yyS[yypt-7].ident),
-				Args:   []ast.ExprNode{yyS[yypt-5].expr, yyS[yypt-3].expr, yyS[yypt-1].expr},
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCallExpr{
+				FnName: model.NewCIStr(yyS.ident[yypt-7]),
+				Args:   []ast.ExprNode{yyS.expr[yypt-5], yyS.expr[yypt-3], yyS.expr[yypt-1]},
 			}
 		}
 	case 888:
 		{
-			parser.yyVAL.expr = &ast.FuncCallExpr{
-				FnName: model.NewCIStr(yyS[yypt-7].ident),
-				Args:   []ast.ExprNode{yyS[yypt-5].expr, yyS[yypt-3].expr, yyS[yypt-1].expr},
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCallExpr{
+				FnName: model.NewCIStr(yyS.ident[yypt-7]),
+				Args:   []ast.ExprNode{yyS.expr[yypt-5], yyS.expr[yypt-3], yyS.expr[yypt-1]},
 			}
 		}
 	case 889:
 		{
-			parser.yyVAL.expr = &ast.FuncCallExpr{
-				FnName: model.NewCIStr(yyS[yypt-7].ident),
-				Args:   []ast.ExprNode{ast.NewValueExpr(yyS[yypt-5].ident), yyS[yypt-3].expr, yyS[yypt-1].expr},
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCallExpr{
+				FnName: model.NewCIStr(yyS.ident[yypt-7]),
+				Args:   []ast.ExprNode{ast.NewValueExpr(yyS.ident[yypt-5]), yyS.expr[yypt-3], yyS.expr[yypt-1]},
 			}
 		}
 	case 890:
 		{
-			parser.yyVAL.expr = &ast.FuncCallExpr{
-				FnName: model.NewCIStr(yyS[yypt-7].ident),
-				Args:   []ast.ExprNode{ast.NewValueExpr(yyS[yypt-5].ident), yyS[yypt-3].expr, yyS[yypt-1].expr},
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCallExpr{
+				FnName: model.NewCIStr(yyS.ident[yypt-7]),
+				Args:   []ast.ExprNode{ast.NewValueExpr(yyS.ident[yypt-5]), yyS.expr[yypt-3], yyS.expr[yypt-1]},
 			}
 		}
 	case 891:
 		{
-			parser.yyVAL.expr = &ast.FuncCallExpr{
-				FnName: model.NewCIStr(yyS[yypt-3].ident),
-				Args:   []ast.ExprNode{yyS[yypt-1].expr},
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCallExpr{
+				FnName: model.NewCIStr(yyS.ident[yypt-3]),
+				Args:   []ast.ExprNode{yyS.expr[yypt-1]},
 			}
 		}
 	case 892:
 		{
-			parser.yyVAL.expr = &ast.FuncCallExpr{
-				FnName: model.NewCIStr(yyS[yypt-5].ident),
-				Args:   []ast.ExprNode{yyS[yypt-1].expr, yyS[yypt-3].expr},
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCallExpr{
+				FnName: model.NewCIStr(yyS.ident[yypt-5]),
+				Args:   []ast.ExprNode{yyS.expr[yypt-1], yyS.expr[yypt-3]},
 			}
 		}
 	case 893:
 		{
 			nilVal := ast.NewValueExpr(nil)
-			direction := ast.NewValueExpr(int(yyS[yypt-3].item.(ast.TrimDirectionType)))
-			parser.yyVAL.expr = &ast.FuncCallExpr{
-				FnName: model.NewCIStr(yyS[yypt-5].ident),
-				Args:   []ast.ExprNode{yyS[yypt-1].expr, nilVal, direction},
+			direction := ast.NewValueExpr(int(yyS.item[yypt-3].(ast.TrimDirectionType)))
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCallExpr{
+				FnName: model.NewCIStr(yyS.ident[yypt-5]),
+				Args:   []ast.ExprNode{yyS.expr[yypt-1], nilVal, direction},
 			}
 		}
 	case 894:
 		{
-			direction := ast.NewValueExpr(int(yyS[yypt-4].item.(ast.TrimDirectionType)))
-			parser.yyVAL.expr = &ast.FuncCallExpr{
-				FnName: model.NewCIStr(yyS[yypt-6].ident),
-				Args:   []ast.ExprNode{yyS[yypt-1].expr, yyS[yypt-3].expr, direction},
+			direction := ast.NewValueExpr(int(yyS.item[yypt-4].(ast.TrimDirectionType)))
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCallExpr{
+				FnName: model.NewCIStr(yyS.ident[yypt-6]),
+				Args:   []ast.ExprNode{yyS.expr[yypt-1], yyS.expr[yypt-3], direction},
 			}
 		}
 	case 895:
 		{
-			parser.yyVAL.ident = strings.ToUpper(yyS[yypt-0].ident)
+			yyVAL.typ = identType
+			yyVAL.ident = strings.ToUpper(yyS.ident[yypt-0])
 		}
 	case 896:
 		{
-			parser.yyVAL.ident = strings.ToUpper(yyS[yypt-0].ident)
+			yyVAL.typ = identType
+			yyVAL.ident = strings.ToUpper(yyS.ident[yypt-0])
 		}
 	case 897:
 		{
-			parser.yyVAL.ident = strings.ToUpper(yyS[yypt-0].ident)
+			yyVAL.typ = identType
+			yyVAL.ident = strings.ToUpper(yyS.ident[yypt-0])
 		}
 	case 898:
 		{
-			parser.yyVAL.ident = strings.ToUpper(yyS[yypt-0].ident)
+			yyVAL.typ = identType
+			yyVAL.ident = strings.ToUpper(yyS.ident[yypt-0])
 		}
 	case 903:
 		{
-			parser.yyVAL.item = ast.TrimBoth
+			yyVAL.typ = itemType
+			yyVAL.item = ast.TrimBoth
 		}
 	case 904:
 		{
-			parser.yyVAL.item = ast.TrimLeading
+			yyVAL.typ = itemType
+			yyVAL.item = ast.TrimLeading
 		}
 	case 905:
 		{
-			parser.yyVAL.item = ast.TrimTrailing
+			yyVAL.typ = itemType
+			yyVAL.item = ast.TrimTrailing
 		}
 	case 906:
 		{
-			if yyS[yypt-0].item != nil {
-				parser.yyVAL.expr = &ast.WindowFuncExpr{F: yyS[yypt-5].ident, Args: []ast.ExprNode{yyS[yypt-2].expr}, Distinct: yyS[yypt-3].item.(bool), Spec: *(yyS[yypt-0].item.(*ast.WindowSpec))}
+			if yyS.item[yypt-0] != nil {
+				yyVAL.typ = exprType
+				yyVAL.expr = &ast.WindowFuncExpr{F: yyS.ident[yypt-5], Args: []ast.ExprNode{yyS.expr[yypt-2]}, Distinct: yyS.item[yypt-3].(bool), Spec: *(yyS.item[yypt-0].(*ast.WindowSpec))}
 			} else {
-				parser.yyVAL.expr = &ast.AggregateFuncExpr{F: yyS[yypt-5].ident, Args: []ast.ExprNode{yyS[yypt-2].expr}, Distinct: yyS[yypt-3].item.(bool)}
+				yyVAL.typ = exprType
+				yyVAL.expr = &ast.AggregateFuncExpr{F: yyS.ident[yypt-5], Args: []ast.ExprNode{yyS.expr[yypt-2]}, Distinct: yyS.item[yypt-3].(bool)}
 			}
 		}
 	case 907:
 		{
-			if yyS[yypt-0].item != nil {
-				parser.yyVAL.expr = &ast.WindowFuncExpr{F: yyS[yypt-4].ident, Args: []ast.ExprNode{yyS[yypt-2].expr}, Spec: *(yyS[yypt-0].item.(*ast.WindowSpec))}
+			if yyS.item[yypt-0] != nil {
+				yyVAL.typ = exprType
+				yyVAL.expr = &ast.WindowFuncExpr{F: yyS.ident[yypt-4], Args: []ast.ExprNode{yyS.expr[yypt-2]}, Spec: *(yyS.item[yypt-0].(*ast.WindowSpec))}
 			} else {
-				parser.yyVAL.expr = &ast.AggregateFuncExpr{F: yyS[yypt-4].ident, Args: []ast.ExprNode{yyS[yypt-2].expr}}
+				yyVAL.typ = exprType
+				yyVAL.expr = &ast.AggregateFuncExpr{F: yyS.ident[yypt-4], Args: []ast.ExprNode{yyS.expr[yypt-2]}}
 			}
 		}
 	case 908:
 		{
-			if yyS[yypt-0].item != nil {
-				parser.yyVAL.expr = &ast.WindowFuncExpr{F: yyS[yypt-5].ident, Args: []ast.ExprNode{yyS[yypt-2].expr}, Spec: *(yyS[yypt-0].item.(*ast.WindowSpec))}
+			if yyS.item[yypt-0] != nil {
+				yyVAL.typ = exprType
+				yyVAL.expr = &ast.WindowFuncExpr{F: yyS.ident[yypt-5], Args: []ast.ExprNode{yyS.expr[yypt-2]}, Spec: *(yyS.item[yypt-0].(*ast.WindowSpec))}
 			} else {
-				parser.yyVAL.expr = &ast.AggregateFuncExpr{F: yyS[yypt-5].ident, Args: []ast.ExprNode{yyS[yypt-2].expr}}
+				yyVAL.typ = exprType
+				yyVAL.expr = &ast.AggregateFuncExpr{F: yyS.ident[yypt-5], Args: []ast.ExprNode{yyS.expr[yypt-2]}}
 			}
 		}
 	case 909:
 		{
-			if yyS[yypt-0].item != nil {
-				parser.yyVAL.expr = &ast.WindowFuncExpr{F: yyS[yypt-4].ident, Args: []ast.ExprNode{yyS[yypt-2].expr}, Spec: *(yyS[yypt-0].item.(*ast.WindowSpec))}
+			if yyS.item[yypt-0] != nil {
+				yyVAL.typ = exprType
+				yyVAL.expr = &ast.WindowFuncExpr{F: yyS.ident[yypt-4], Args: []ast.ExprNode{yyS.expr[yypt-2]}, Spec: *(yyS.item[yypt-0].(*ast.WindowSpec))}
 			} else {
-				parser.yyVAL.expr = &ast.AggregateFuncExpr{F: yyS[yypt-4].ident, Args: []ast.ExprNode{yyS[yypt-2].expr}}
+				yyVAL.typ = exprType
+				yyVAL.expr = &ast.AggregateFuncExpr{F: yyS.ident[yypt-4], Args: []ast.ExprNode{yyS.expr[yypt-2]}}
 			}
 		}
 	case 910:
 		{
-			if yyS[yypt-0].item != nil {
-				parser.yyVAL.expr = &ast.WindowFuncExpr{F: yyS[yypt-5].ident, Args: []ast.ExprNode{yyS[yypt-2].expr}, Spec: *(yyS[yypt-0].item.(*ast.WindowSpec))}
+			if yyS.item[yypt-0] != nil {
+				yyVAL.typ = exprType
+				yyVAL.expr = &ast.WindowFuncExpr{F: yyS.ident[yypt-5], Args: []ast.ExprNode{yyS.expr[yypt-2]}, Spec: *(yyS.item[yypt-0].(*ast.WindowSpec))}
 			} else {
-				parser.yyVAL.expr = &ast.AggregateFuncExpr{F: yyS[yypt-5].ident, Args: []ast.ExprNode{yyS[yypt-2].expr}}
+				yyVAL.typ = exprType
+				yyVAL.expr = &ast.AggregateFuncExpr{F: yyS.ident[yypt-5], Args: []ast.ExprNode{yyS.expr[yypt-2]}}
 			}
 		}
 	case 911:
 		{
-			if yyS[yypt-0].item != nil {
-				parser.yyVAL.expr = &ast.WindowFuncExpr{F: yyS[yypt-4].ident, Args: []ast.ExprNode{yyS[yypt-2].expr}, Spec: *(yyS[yypt-0].item.(*ast.WindowSpec))}
+			if yyS.item[yypt-0] != nil {
+				yyVAL.typ = exprType
+				yyVAL.expr = &ast.WindowFuncExpr{F: yyS.ident[yypt-4], Args: []ast.ExprNode{yyS.expr[yypt-2]}, Spec: *(yyS.item[yypt-0].(*ast.WindowSpec))}
 			} else {
-				parser.yyVAL.expr = &ast.AggregateFuncExpr{F: yyS[yypt-4].ident, Args: []ast.ExprNode{yyS[yypt-2].expr}}
+				yyVAL.typ = exprType
+				yyVAL.expr = &ast.AggregateFuncExpr{F: yyS.ident[yypt-4], Args: []ast.ExprNode{yyS.expr[yypt-2]}}
 			}
 		}
 	case 912:
 		{
-			if yyS[yypt-0].item != nil {
-				parser.yyVAL.expr = &ast.WindowFuncExpr{F: yyS[yypt-5].ident, Args: []ast.ExprNode{yyS[yypt-2].expr}, Spec: *(yyS[yypt-0].item.(*ast.WindowSpec))}
+			if yyS.item[yypt-0] != nil {
+				yyVAL.typ = exprType
+				yyVAL.expr = &ast.WindowFuncExpr{F: yyS.ident[yypt-5], Args: []ast.ExprNode{yyS.expr[yypt-2]}, Spec: *(yyS.item[yypt-0].(*ast.WindowSpec))}
 			} else {
-				parser.yyVAL.expr = &ast.AggregateFuncExpr{F: yyS[yypt-5].ident, Args: []ast.ExprNode{yyS[yypt-2].expr}}
+				yyVAL.typ = exprType
+				yyVAL.expr = &ast.AggregateFuncExpr{F: yyS.ident[yypt-5], Args: []ast.ExprNode{yyS.expr[yypt-2]}}
 			}
 		}
 	case 913:
 		{
-			parser.yyVAL.expr = &ast.AggregateFuncExpr{F: yyS[yypt-4].ident, Args: yyS[yypt-1].item.([]ast.ExprNode), Distinct: true}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.AggregateFuncExpr{F: yyS.ident[yypt-4], Args: yyS.item[yypt-1].([]ast.ExprNode), Distinct: true}
 		}
 	case 914:
 		{
-			if yyS[yypt-0].item != nil {
-				parser.yyVAL.expr = &ast.WindowFuncExpr{F: yyS[yypt-5].ident, Args: []ast.ExprNode{yyS[yypt-2].expr}, Spec: *(yyS[yypt-0].item.(*ast.WindowSpec))}
+			if yyS.item[yypt-0] != nil {
+				yyVAL.typ = exprType
+				yyVAL.expr = &ast.WindowFuncExpr{F: yyS.ident[yypt-5], Args: []ast.ExprNode{yyS.expr[yypt-2]}, Spec: *(yyS.item[yypt-0].(*ast.WindowSpec))}
 			} else {
-				parser.yyVAL.expr = &ast.AggregateFuncExpr{F: yyS[yypt-5].ident, Args: []ast.ExprNode{yyS[yypt-2].expr}}
+				yyVAL.typ = exprType
+				yyVAL.expr = &ast.AggregateFuncExpr{F: yyS.ident[yypt-5], Args: []ast.ExprNode{yyS.expr[yypt-2]}}
 			}
 		}
 	case 915:
 		{
-			if yyS[yypt-0].item != nil {
-				parser.yyVAL.expr = &ast.WindowFuncExpr{F: yyS[yypt-4].ident, Args: []ast.ExprNode{yyS[yypt-2].expr}, Spec: *(yyS[yypt-0].item.(*ast.WindowSpec))}
+			if yyS.item[yypt-0] != nil {
+				yyVAL.typ = exprType
+				yyVAL.expr = &ast.WindowFuncExpr{F: yyS.ident[yypt-4], Args: []ast.ExprNode{yyS.expr[yypt-2]}, Spec: *(yyS.item[yypt-0].(*ast.WindowSpec))}
 			} else {
-				parser.yyVAL.expr = &ast.AggregateFuncExpr{F: yyS[yypt-4].ident, Args: []ast.ExprNode{yyS[yypt-2].expr}}
+				yyVAL.typ = exprType
+				yyVAL.expr = &ast.AggregateFuncExpr{F: yyS.ident[yypt-4], Args: []ast.ExprNode{yyS.expr[yypt-2]}}
 			}
 		}
 	case 916:
 		{
 			args := []ast.ExprNode{ast.NewValueExpr(1)}
-			if yyS[yypt-0].item != nil {
-				parser.yyVAL.expr = &ast.WindowFuncExpr{F: yyS[yypt-4].ident, Args: args, Spec: *(yyS[yypt-0].item.(*ast.WindowSpec))}
+			if yyS.item[yypt-0] != nil {
+				yyVAL.typ = exprType
+				yyVAL.expr = &ast.WindowFuncExpr{F: yyS.ident[yypt-4], Args: args, Spec: *(yyS.item[yypt-0].(*ast.WindowSpec))}
 			} else {
-				parser.yyVAL.expr = &ast.AggregateFuncExpr{F: yyS[yypt-4].ident, Args: args}
+				yyVAL.typ = exprType
+				yyVAL.expr = &ast.AggregateFuncExpr{F: yyS.ident[yypt-4], Args: args}
 			}
 		}
 	case 917:
 		{
-			args := yyS[yypt-3].item.([]ast.ExprNode)
-			args = append(args, yyS[yypt-1].item.(ast.ExprNode))
-			parser.yyVAL.expr = &ast.AggregateFuncExpr{F: yyS[yypt-6].ident, Args: args, Distinct: yyS[yypt-4].item.(bool)}
+			args := yyS.item[yypt-3].([]ast.ExprNode)
+			args = append(args, yyS.item[yypt-1].(ast.ExprNode))
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.AggregateFuncExpr{F: yyS.ident[yypt-6], Args: args, Distinct: yyS.item[yypt-4].(bool)}
 		}
 	case 918:
 		{
-			if yyS[yypt-0].item != nil {
-				parser.yyVAL.expr = &ast.WindowFuncExpr{F: yyS[yypt-5].ident, Args: []ast.ExprNode{yyS[yypt-2].expr}, Distinct: yyS[yypt-3].item.(bool), Spec: *(yyS[yypt-0].item.(*ast.WindowSpec))}
+			if yyS.item[yypt-0] != nil {
+				yyVAL.typ = exprType
+				yyVAL.expr = &ast.WindowFuncExpr{F: yyS.ident[yypt-5], Args: []ast.ExprNode{yyS.expr[yypt-2]}, Distinct: yyS.item[yypt-3].(bool), Spec: *(yyS.item[yypt-0].(*ast.WindowSpec))}
 			} else {
-				parser.yyVAL.expr = &ast.AggregateFuncExpr{F: yyS[yypt-5].ident, Args: []ast.ExprNode{yyS[yypt-2].expr}, Distinct: yyS[yypt-3].item.(bool)}
+				yyVAL.typ = exprType
+				yyVAL.expr = &ast.AggregateFuncExpr{F: yyS.ident[yypt-5], Args: []ast.ExprNode{yyS.expr[yypt-2]}, Distinct: yyS.item[yypt-3].(bool)}
 			}
 		}
 	case 919:
 		{
-			if yyS[yypt-0].item != nil {
-				parser.yyVAL.expr = &ast.WindowFuncExpr{F: yyS[yypt-5].ident, Args: []ast.ExprNode{yyS[yypt-2].expr}, Distinct: yyS[yypt-3].item.(bool), Spec: *(yyS[yypt-0].item.(*ast.WindowSpec))}
+			if yyS.item[yypt-0] != nil {
+				yyVAL.typ = exprType
+				yyVAL.expr = &ast.WindowFuncExpr{F: yyS.ident[yypt-5], Args: []ast.ExprNode{yyS.expr[yypt-2]}, Distinct: yyS.item[yypt-3].(bool), Spec: *(yyS.item[yypt-0].(*ast.WindowSpec))}
 			} else {
-				parser.yyVAL.expr = &ast.AggregateFuncExpr{F: yyS[yypt-5].ident, Args: []ast.ExprNode{yyS[yypt-2].expr}, Distinct: yyS[yypt-3].item.(bool)}
+				yyVAL.typ = exprType
+				yyVAL.expr = &ast.AggregateFuncExpr{F: yyS.ident[yypt-5], Args: []ast.ExprNode{yyS.expr[yypt-2]}, Distinct: yyS.item[yypt-3].(bool)}
 			}
 		}
 	case 920:
 		{
-			if yyS[yypt-0].item != nil {
-				parser.yyVAL.expr = &ast.WindowFuncExpr{F: yyS[yypt-5].ident, Args: []ast.ExprNode{yyS[yypt-2].expr}, Distinct: yyS[yypt-3].item.(bool), Spec: *(yyS[yypt-0].item.(*ast.WindowSpec))}
+			if yyS.item[yypt-0] != nil {
+				yyVAL.typ = exprType
+				yyVAL.expr = &ast.WindowFuncExpr{F: yyS.ident[yypt-5], Args: []ast.ExprNode{yyS.expr[yypt-2]}, Distinct: yyS.item[yypt-3].(bool), Spec: *(yyS.item[yypt-0].(*ast.WindowSpec))}
 			} else {
-				parser.yyVAL.expr = &ast.AggregateFuncExpr{F: yyS[yypt-5].ident, Args: []ast.ExprNode{yyS[yypt-2].expr}, Distinct: yyS[yypt-3].item.(bool)}
+				yyVAL.typ = exprType
+				yyVAL.expr = &ast.AggregateFuncExpr{F: yyS.ident[yypt-5], Args: []ast.ExprNode{yyS.expr[yypt-2]}, Distinct: yyS.item[yypt-3].(bool)}
 			}
 		}
 	case 921:
 		{
-			if yyS[yypt-0].item != nil {
-				parser.yyVAL.expr = &ast.WindowFuncExpr{F: yyS[yypt-5].ident, Args: []ast.ExprNode{yyS[yypt-2].expr}, Distinct: yyS[yypt-3].item.(bool), Spec: *(yyS[yypt-0].item.(*ast.WindowSpec))}
+			if yyS.item[yypt-0] != nil {
+				yyVAL.typ = exprType
+				yyVAL.expr = &ast.WindowFuncExpr{F: yyS.ident[yypt-5], Args: []ast.ExprNode{yyS.expr[yypt-2]}, Distinct: yyS.item[yypt-3].(bool), Spec: *(yyS.item[yypt-0].(*ast.WindowSpec))}
 			} else {
-				parser.yyVAL.expr = &ast.AggregateFuncExpr{F: yyS[yypt-5].ident, Args: []ast.ExprNode{yyS[yypt-2].expr}, Distinct: yyS[yypt-3].item.(bool)}
+				yyVAL.typ = exprType
+				yyVAL.expr = &ast.AggregateFuncExpr{F: yyS.ident[yypt-5], Args: []ast.ExprNode{yyS.expr[yypt-2]}, Distinct: yyS.item[yypt-3].(bool)}
 			}
 		}
 	case 922:
 		{
-			if yyS[yypt-0].item != nil {
-				parser.yyVAL.expr = &ast.WindowFuncExpr{F: yyS[yypt-5].ident, Args: []ast.ExprNode{yyS[yypt-2].expr}, Distinct: yyS[yypt-3].item.(bool), Spec: *(yyS[yypt-0].item.(*ast.WindowSpec))}
+			if yyS.item[yypt-0] != nil {
+				yyVAL.typ = exprType
+				yyVAL.expr = &ast.WindowFuncExpr{F: yyS.ident[yypt-5], Args: []ast.ExprNode{yyS.expr[yypt-2]}, Distinct: yyS.item[yypt-3].(bool), Spec: *(yyS.item[yypt-0].(*ast.WindowSpec))}
 			} else {
-				parser.yyVAL.expr = &ast.AggregateFuncExpr{F: yyS[yypt-5].ident, Args: []ast.ExprNode{yyS[yypt-2].expr}, Distinct: yyS[yypt-3].item.(bool)}
+				yyVAL.typ = exprType
+				yyVAL.expr = &ast.AggregateFuncExpr{F: yyS.ident[yypt-5], Args: []ast.ExprNode{yyS.expr[yypt-2]}, Distinct: yyS.item[yypt-3].(bool)}
 			}
 		}
 	case 923:
 		{
-			parser.yyVAL.expr = &ast.AggregateFuncExpr{F: ast.AggFuncVarPop, Args: []ast.ExprNode{yyS[yypt-2].expr}, Distinct: yyS[yypt-3].item.(bool)}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.AggregateFuncExpr{F: ast.AggFuncVarPop, Args: []ast.ExprNode{yyS.expr[yypt-2]}, Distinct: yyS.item[yypt-3].(bool)}
 		}
 	case 924:
 		{
-			parser.yyVAL.expr = &ast.AggregateFuncExpr{F: yyS[yypt-5].ident, Args: []ast.ExprNode{yyS[yypt-2].expr}, Distinct: yyS[yypt-3].item.(bool)}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.AggregateFuncExpr{F: yyS.ident[yypt-5], Args: []ast.ExprNode{yyS.expr[yypt-2]}, Distinct: yyS.item[yypt-3].(bool)}
 		}
 	case 925:
 		{
-			parser.yyVAL.item = ast.NewValueExpr(",")
+			yyVAL.typ = itemType
+			yyVAL.item = ast.NewValueExpr(",")
 		}
 	case 926:
 		{
-			parser.yyVAL.item = ast.NewValueExpr(yyS[yypt-0].ident)
+			yyVAL.typ = itemType
+			yyVAL.item = ast.NewValueExpr(yyS.ident[yypt-0])
 		}
 	case 927:
 		{
-			parser.yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr(yyS[yypt-3].ident), Args: yyS[yypt-1].item.([]ast.ExprNode)}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr(yyS.ident[yypt-3]), Args: yyS.item[yypt-1].([]ast.ExprNode)}
 		}
 	case 928:
 		{
-			parser.yyVAL.item = nil
+			yyVAL.typ = itemType
+			yyVAL.item = nil
 		}
 	case 929:
 		{
-			parser.yyVAL.item = nil
+			yyVAL.typ = itemType
+			yyVAL.item = nil
 		}
 	case 930:
 		{
-			expr := ast.NewValueExpr(yyS[yypt-1].item)
-			parser.yyVAL.item = expr
+			expr := ast.NewValueExpr(yyS.item[yypt-1])
+			yyVAL.typ = itemType
+			yyVAL.item = expr
 		}
 	case 931:
 		{
-			parser.yyVAL.ident = strings.ToUpper(yyS[yypt-0].ident)
+			yyVAL.typ = identType
+			yyVAL.ident = strings.ToUpper(yyS.ident[yypt-0])
 		}
 	case 932:
 		{
-			parser.yyVAL.ident = strings.ToUpper(yyS[yypt-0].ident)
+			yyVAL.typ = identType
+			yyVAL.ident = strings.ToUpper(yyS.ident[yypt-0])
 		}
 	case 933:
 		{
-			parser.yyVAL.ident = strings.ToUpper(yyS[yypt-0].ident)
+			yyVAL.typ = identType
+			yyVAL.ident = strings.ToUpper(yyS.ident[yypt-0])
 		}
 	case 934:
 		{
-			parser.yyVAL.ident = strings.ToUpper(yyS[yypt-0].ident)
+			yyVAL.typ = identType
+			yyVAL.ident = strings.ToUpper(yyS.ident[yypt-0])
 		}
 	case 935:
 		{
-			parser.yyVAL.ident = strings.ToUpper(yyS[yypt-0].ident)
+			yyVAL.typ = identType
+			yyVAL.ident = strings.ToUpper(yyS.ident[yypt-0])
 		}
 	case 936:
 		{
-			parser.yyVAL.ident = strings.ToUpper(yyS[yypt-0].ident)
+			yyVAL.typ = identType
+			yyVAL.ident = strings.ToUpper(yyS.ident[yypt-0])
 		}
 	case 937:
 		{
-			parser.yyVAL.ident = strings.ToUpper(yyS[yypt-0].ident)
+			yyVAL.typ = identType
+			yyVAL.ident = strings.ToUpper(yyS.ident[yypt-0])
 		}
 	case 938:
 		{
-			parser.yyVAL.ident = strings.ToUpper(yyS[yypt-0].ident)
+			yyVAL.typ = identType
+			yyVAL.ident = strings.ToUpper(yyS.ident[yypt-0])
 		}
 	case 939:
 		{
-			parser.yyVAL.ident = strings.ToUpper(yyS[yypt-0].ident)
+			yyVAL.typ = identType
+			yyVAL.ident = strings.ToUpper(yyS.ident[yypt-0])
 		}
 	case 940:
 		{
-			parser.yyVAL.ident = strings.ToUpper(yyS[yypt-0].ident)
+			yyVAL.typ = identType
+			yyVAL.ident = strings.ToUpper(yyS.ident[yypt-0])
 		}
 	case 941:
 		{
-			parser.yyVAL.ident = strings.ToUpper(yyS[yypt-0].ident)
+			yyVAL.typ = identType
+			yyVAL.ident = strings.ToUpper(yyS.ident[yypt-0])
 		}
 	case 942:
 		{
-			parser.yyVAL.ident = strings.ToUpper(yyS[yypt-0].ident)
+			yyVAL.typ = identType
+			yyVAL.ident = strings.ToUpper(yyS.ident[yypt-0])
 		}
 	case 943:
 		{
-			parser.yyVAL.ident = strings.ToUpper(yyS[yypt-0].ident)
+			yyVAL.typ = identType
+			yyVAL.ident = strings.ToUpper(yyS.ident[yypt-0])
 		}
 	case 944:
 		{
-			parser.yyVAL.ident = strings.ToUpper(yyS[yypt-0].ident)
+			yyVAL.typ = identType
+			yyVAL.ident = strings.ToUpper(yyS.ident[yypt-0])
 		}
 	case 945:
 		{
-			parser.yyVAL.ident = strings.ToUpper(yyS[yypt-0].ident)
+			yyVAL.typ = identType
+			yyVAL.ident = strings.ToUpper(yyS.ident[yypt-0])
 		}
 	case 946:
 		{
-			parser.yyVAL.ident = strings.ToUpper(yyS[yypt-0].ident)
+			yyVAL.typ = identType
+			yyVAL.ident = strings.ToUpper(yyS.ident[yypt-0])
 		}
 	case 947:
 		{
-			parser.yyVAL.ident = strings.ToUpper(yyS[yypt-0].ident)
+			yyVAL.typ = identType
+			yyVAL.ident = strings.ToUpper(yyS.ident[yypt-0])
 		}
 	case 948:
 		{
-			parser.yyVAL.ident = strings.ToUpper(yyS[yypt-0].ident)
+			yyVAL.typ = identType
+			yyVAL.ident = strings.ToUpper(yyS.ident[yypt-0])
 		}
 	case 949:
 		{
-			parser.yyVAL.ident = strings.ToUpper(yyS[yypt-0].ident)
+			yyVAL.typ = identType
+			yyVAL.ident = strings.ToUpper(yyS.ident[yypt-0])
 		}
 	case 950:
 		{
-			parser.yyVAL.ident = strings.ToUpper(yyS[yypt-0].ident)
+			yyVAL.typ = identType
+			yyVAL.ident = strings.ToUpper(yyS.ident[yypt-0])
 		}
 	case 951:
 		{
-			parser.yyVAL.ident = strings.ToUpper(yyS[yypt-0].ident)
+			yyVAL.typ = identType
+			yyVAL.ident = strings.ToUpper(yyS.ident[yypt-0])
 		}
 	case 952:
 		{
-			parser.yyVAL.ident = strings.ToUpper(yyS[yypt-0].ident)
+			yyVAL.typ = identType
+			yyVAL.ident = strings.ToUpper(yyS.ident[yypt-0])
 		}
 	case 953:
 		{
-			parser.yyVAL.ident = strings.ToUpper(yyS[yypt-0].ident)
+			yyVAL.typ = identType
+			yyVAL.ident = strings.ToUpper(yyS.ident[yypt-0])
 		}
 	case 954:
 		{
-			parser.yyVAL.ident = strings.ToUpper(yyS[yypt-0].ident)
+			yyVAL.typ = identType
+			yyVAL.ident = strings.ToUpper(yyS.ident[yypt-0])
 		}
 	case 955:
 		{
-			parser.yyVAL.ident = strings.ToUpper(yyS[yypt-0].ident)
+			yyVAL.typ = identType
+			yyVAL.ident = strings.ToUpper(yyS.ident[yypt-0])
 		}
 	case 956:
 		{
-			parser.yyVAL.ident = strings.ToUpper(yyS[yypt-0].ident)
+			yyVAL.typ = identType
+			yyVAL.ident = strings.ToUpper(yyS.ident[yypt-0])
 		}
 	case 957:
 		{
-			parser.yyVAL.ident = strings.ToUpper(yyS[yypt-0].ident)
+			yyVAL.typ = identType
+			yyVAL.ident = strings.ToUpper(yyS.ident[yypt-0])
 		}
 	case 958:
 		{
-			parser.yyVAL.ident = strings.ToUpper(yyS[yypt-0].ident)
+			yyVAL.typ = identType
+			yyVAL.ident = strings.ToUpper(yyS.ident[yypt-0])
 		}
 	case 959:
 		{
-			parser.yyVAL.ident = strings.ToUpper(yyS[yypt-0].ident)
+			yyVAL.typ = identType
+			yyVAL.ident = strings.ToUpper(yyS.ident[yypt-0])
 		}
 	case 960:
 		{
-			parser.yyVAL.expr = nil
+			yyVAL.typ = exprType
+			yyVAL.expr = nil
 		}
 	case 961:
 		{
-			parser.yyVAL.expr = yyS[yypt-0].expr
+			yyVAL.typ = exprType
+			yyVAL.expr = yyS.expr[yypt-0]
 		}
 	case 962:
 		{
-			parser.yyVAL.item = []*ast.WhenClause{yyS[yypt-0].item.(*ast.WhenClause)}
+			yyVAL.typ = itemType
+			yyVAL.item = []*ast.WhenClause{yyS.item[yypt-0].(*ast.WhenClause)}
 		}
 	case 963:
 		{
-			parser.yyVAL.item = append(yyS[yypt-1].item.([]*ast.WhenClause), yyS[yypt-0].item.(*ast.WhenClause))
+			yyVAL.typ = itemType
+			yyVAL.item = append(yyS.item[yypt-1].([]*ast.WhenClause), yyS.item[yypt-0].(*ast.WhenClause))
 		}
 	case 964:
 		{
-			parser.yyVAL.item = &ast.WhenClause{
-				Expr:   yyS[yypt-2].expr,
-				Result: yyS[yypt-0].expr,
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.WhenClause{
+				Expr:   yyS.expr[yypt-2],
+				Result: yyS.expr[yypt-0],
 			}
 		}
 	case 965:
 		{
-			parser.yyVAL.item = nil
+			yyVAL.typ = itemType
+			yyVAL.item = nil
 		}
 	case 966:
 		{
-			parser.yyVAL.item = yyS[yypt-0].expr
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.expr[yypt-0]
 		}
 	case 967:
 		{
 			x := types.NewFieldType(mysql.TypeVarString)
-			x.Flen = yyS[yypt-0].item.(int) // TODO: Flen should be the flen of expression
+			x.Flen = yyS.item[yypt-0].(int) // TODO: Flen should be the flen of expression
 			if x.Flen != types.UnspecifiedLength {
 				x.Tp = mysql.TypeString
 			}
 			x.Charset = charset.CharsetBin
 			x.Collate = charset.CollationBin
 			x.Flag |= mysql.BinaryFlag
-			parser.yyVAL.item = x
+			yyVAL.typ = itemType
+			yyVAL.item = x
 		}
 	case 968:
 		{
 			x := types.NewFieldType(mysql.TypeVarString)
-			x.Flen = yyS[yypt-1].item.(int) // TODO: Flen should be the flen of expression
-			x.Charset = yyS[yypt-0].item.(*ast.OptBinary).Charset
-			if yyS[yypt-0].item.(*ast.OptBinary).IsBinary {
+			x.Flen = yyS.item[yypt-1].(int) // TODO: Flen should be the flen of expression
+			x.Charset = yyS.item[yypt-0].(*ast.OptBinary).Charset
+			if yyS.item[yypt-0].(*ast.OptBinary).IsBinary {
 				x.Flag |= mysql.BinaryFlag
 			}
 			if x.Charset == "" {
 				x.Charset = mysql.DefaultCharset
 				x.Collate = mysql.DefaultCollationName
 			}
-			parser.yyVAL.item = x
+			yyVAL.typ = itemType
+			yyVAL.item = x
 		}
 	case 969:
 		{
@@ -11378,44 +11967,48 @@ yynewstate:
 			x.Charset = charset.CharsetBin
 			x.Collate = charset.CollationBin
 			x.Flag |= mysql.BinaryFlag
-			parser.yyVAL.item = x
+			yyVAL.typ = itemType
+			yyVAL.item = x
 		}
 	case 970:
 		{
 			x := types.NewFieldType(mysql.TypeDatetime)
 			x.Flen, _ = mysql.GetDefaultFieldLengthAndDecimalForCast(mysql.TypeDatetime)
-			x.Decimal = yyS[yypt-0].item.(int)
+			x.Decimal = yyS.item[yypt-0].(int)
 			if x.Decimal > 0 {
 				x.Flen = x.Flen + 1 + x.Decimal
 			}
 			x.Charset = charset.CharsetBin
 			x.Collate = charset.CollationBin
 			x.Flag |= mysql.BinaryFlag
-			parser.yyVAL.item = x
+			yyVAL.typ = itemType
+			yyVAL.item = x
 		}
 	case 971:
 		{
-			fopt := yyS[yypt-0].item.(*ast.FloatOpt)
+			fopt := yyS.item[yypt-0].(*ast.FloatOpt)
 			x := types.NewFieldType(mysql.TypeNewDecimal)
 			x.Flen = fopt.Flen
 			x.Decimal = fopt.Decimal
 			x.Charset = charset.CharsetBin
 			x.Collate = charset.CollationBin
 			x.Flag |= mysql.BinaryFlag
-			parser.yyVAL.item = x
+			yyVAL.typ = itemType
+			yyVAL.item = x
 		}
 	case 972:
 		{
 			x := types.NewFieldType(mysql.TypeDuration)
 			x.Flen, _ = mysql.GetDefaultFieldLengthAndDecimalForCast(mysql.TypeDuration)
-			x.Decimal = yyS[yypt-0].item.(int)
+			x.Decimal = yyS.item[yypt-0].(int)
 			if x.Decimal > 0 {
 				x.Flen = x.Flen + 1 + x.Decimal
 			}
 			x.Charset = charset.CharsetBin
 			x.Collate = charset.CollationBin
 			x.Flag |= mysql.BinaryFlag
-			parser.yyVAL.item = x
+			yyVAL.typ = itemType
+			yyVAL.item = x
 		}
 	case 973:
 		{
@@ -11423,7 +12016,8 @@ yynewstate:
 			x.Charset = charset.CharsetBin
 			x.Collate = charset.CollationBin
 			x.Flag |= mysql.BinaryFlag
-			parser.yyVAL.item = x
+			yyVAL.typ = itemType
+			yyVAL.item = x
 		}
 	case 974:
 		{
@@ -11431,7 +12025,8 @@ yynewstate:
 			x.Flag |= mysql.UnsignedFlag | mysql.BinaryFlag
 			x.Charset = charset.CharsetBin
 			x.Collate = charset.CollationBin
-			parser.yyVAL.item = x
+			yyVAL.typ = itemType
+			yyVAL.item = x
 		}
 	case 975:
 		{
@@ -11439,7 +12034,8 @@ yynewstate:
 			x.Flag |= mysql.BinaryFlag | (mysql.ParseToJSONFlag)
 			x.Charset = mysql.DefaultCharset
 			x.Collate = mysql.DefaultCollationName
-			parser.yyVAL.item = x
+			yyVAL.typ = itemType
+			yyVAL.item = x
 		}
 	case 976:
 		{
@@ -11448,165 +12044,188 @@ yynewstate:
 			x.Flag |= mysql.BinaryFlag
 			x.Charset = charset.CharsetBin
 			x.Collate = charset.CollationBin
-			parser.yyVAL.item = x
+			yyVAL.typ = itemType
+			yyVAL.item = x
 		}
 	case 977:
 		{
-			parser.yyVAL.item = mysql.NoPriority
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.NoPriority
 		}
 	case 978:
 		{
-			parser.yyVAL.item = mysql.LowPriority
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.LowPriority
 		}
 	case 979:
 		{
-			parser.yyVAL.item = mysql.HighPriority
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.HighPriority
 		}
 	case 980:
 		{
-			parser.yyVAL.item = mysql.DelayedPriority
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.DelayedPriority
 		}
 	case 981:
 		{
-			parser.yyVAL.item = &ast.TableName{Name: model.NewCIStr(yyS[yypt-0].ident)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TableName{Name: model.NewCIStr(yyS.ident[yypt-0])}
 		}
 	case 982:
 		{
-			parser.yyVAL.item = &ast.TableName{Schema: model.NewCIStr(yyS[yypt-2].ident), Name: model.NewCIStr(yyS[yypt-0].ident)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TableName{Schema: model.NewCIStr(yyS.ident[yypt-2]), Name: model.NewCIStr(yyS.ident[yypt-0])}
 		}
 	case 983:
 		{
-			parser.yyVAL.item = &ast.TableName{Name: model.NewCIStr(yyS[yypt-2].ident)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TableName{Name: model.NewCIStr(yyS.ident[yypt-2])}
 		}
 	case 984:
 		{
-			tbl := []*ast.TableName{yyS[yypt-0].item.(*ast.TableName)}
-			parser.yyVAL.item = tbl
+			tbl := []*ast.TableName{yyS.item[yypt-0].(*ast.TableName)}
+			yyVAL.typ = itemType
+			yyVAL.item = tbl
 		}
 	case 985:
 		{
-			parser.yyVAL.item = append(yyS[yypt-2].item.([]*ast.TableName), yyS[yypt-0].item.(*ast.TableName))
+			yyVAL.typ = itemType
+			yyVAL.item = append(yyS.item[yypt-2].([]*ast.TableName), yyS.item[yypt-0].(*ast.TableName))
 		}
 	case 986:
 		{
-			parser.yyVAL.item = false
+			yyVAL.typ = itemType
+			yyVAL.item = false
 		}
 	case 987:
 		{
-			parser.yyVAL.item = true
+			yyVAL.typ = itemType
+			yyVAL.item = true
 		}
 	case 988:
 		{
 			var sqlText string
 			var sqlVar *ast.VariableExpr
-			switch yyS[yypt-0].item.(type) {
+			switch yyS.item[yypt-0].(type) {
 			case string:
-				sqlText = yyS[yypt-0].item.(string)
+				sqlText = yyS.item[yypt-0].(string)
 			case *ast.VariableExpr:
-				sqlVar = yyS[yypt-0].item.(*ast.VariableExpr)
+				sqlVar = yyS.item[yypt-0].(*ast.VariableExpr)
 			}
-			parser.yyVAL.statement = &ast.PrepareStmt{
-				Name:    yyS[yypt-2].ident,
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.PrepareStmt{
+				Name:    yyS.ident[yypt-2],
 				SQLText: sqlText,
 				SQLVar:  sqlVar,
 			}
 		}
 	case 989:
 		{
-			parser.yyVAL.item = yyS[yypt-0].ident
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.ident[yypt-0]
 		}
 	case 990:
 		{
-			parser.yyVAL.item = yyS[yypt-0].expr.(interface{})
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.expr[yypt-0].(interface{})
 		}
 	case 991:
 		{
-			parser.yyVAL.statement = &ast.ExecuteStmt{Name: yyS[yypt-0].ident}
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.ExecuteStmt{Name: yyS.ident[yypt-0]}
 		}
 	case 992:
 		{
-			parser.yyVAL.statement = &ast.ExecuteStmt{
-				Name:      yyS[yypt-2].ident,
-				UsingVars: yyS[yypt-0].item.([]ast.ExprNode),
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.ExecuteStmt{
+				Name:      yyS.ident[yypt-2],
+				UsingVars: yyS.item[yypt-0].([]ast.ExprNode),
 			}
 		}
 	case 993:
 		{
-			parser.yyVAL.item = []ast.ExprNode{yyS[yypt-0].expr}
+			yyVAL.typ = itemType
+			yyVAL.item = []ast.ExprNode{yyS.expr[yypt-0]}
 		}
 	case 994:
 		{
-			parser.yyVAL.item = append(yyS[yypt-2].item.([]ast.ExprNode), yyS[yypt-0].expr)
+			yyVAL.typ = itemType
+			yyVAL.item = append(yyS.item[yypt-2].([]ast.ExprNode), yyS.expr[yypt-0])
 		}
 	case 995:
 		{
-			parser.yyVAL.statement = &ast.DeallocateStmt{Name: yyS[yypt-0].ident}
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.DeallocateStmt{Name: yyS.ident[yypt-0]}
 		}
 	case 998:
 		{
-			parser.yyVAL.statement = &ast.RollbackStmt{}
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.RollbackStmt{}
 		}
 	case 999:
 		{
 			st := &ast.SelectStmt{
-				SelectStmtOpts: yyS[yypt-1].item.(*ast.SelectStmtOpts),
-				Distinct:       yyS[yypt-1].item.(*ast.SelectStmtOpts).Distinct,
-				Fields:         yyS[yypt-0].item.(*ast.FieldList),
+				SelectStmtOpts: yyS.item[yypt-1].(*ast.SelectStmtOpts),
+				Distinct:       yyS.item[yypt-1].(*ast.SelectStmtOpts).Distinct,
+				Fields:         yyS.item[yypt-0].(*ast.FieldList),
 			}
 			if st.SelectStmtOpts.TableHints != nil {
 				st.TableHints = st.SelectStmtOpts.TableHints
 			}
-			parser.yyVAL.item = st
+			yyVAL.typ = itemType
+			yyVAL.item = st
 		}
 	case 1000:
 		{
-			st := yyS[yypt-2].item.(*ast.SelectStmt)
+			st := yyS.item[yypt-2].(*ast.SelectStmt)
 			lastField := st.Fields.Fields[len(st.Fields.Fields)-1]
 			if lastField.Expr != nil && lastField.AsName.O == "" {
-				lastEnd := yyS[yypt-1].offset - 1
+				lastEnd := yyS.offset[yypt-1] - 1
 				lastField.SetText(parser.src[lastField.Offset:lastEnd])
 			}
-			if yyS[yypt-0].item != nil {
-				st.Where = yyS[yypt-0].item.(ast.ExprNode)
+			if yyS.item[yypt-0] != nil {
+				st.Where = yyS.item[yypt-0].(ast.ExprNode)
 			}
 		}
 	case 1001:
 		{
-			st := yyS[yypt-6].item.(*ast.SelectStmt)
-			st.From = yyS[yypt-4].item.(*ast.TableRefsClause)
+			st := yyS.item[yypt-6].(*ast.SelectStmt)
+			st.From = yyS.item[yypt-4].(*ast.TableRefsClause)
 			lastField := st.Fields.Fields[len(st.Fields.Fields)-1]
 			if lastField.Expr != nil && lastField.AsName.O == "" {
-				lastEnd := parser.endOffset(&yyS[yypt-5])
+				lastEnd := parser.endOffset(yyS.offset[yypt-5])
 				lastField.SetText(parser.src[lastField.Offset:lastEnd])
 			}
-			if yyS[yypt-3].item != nil {
-				st.Where = yyS[yypt-3].item.(ast.ExprNode)
+			if yyS.item[yypt-3] != nil {
+				st.Where = yyS.item[yypt-3].(ast.ExprNode)
 			}
-			if yyS[yypt-2].item != nil {
-				st.GroupBy = yyS[yypt-2].item.(*ast.GroupByClause)
+			if yyS.item[yypt-2] != nil {
+				st.GroupBy = yyS.item[yypt-2].(*ast.GroupByClause)
 			}
-			if yyS[yypt-1].item != nil {
-				st.Having = yyS[yypt-1].item.(*ast.HavingClause)
+			if yyS.item[yypt-1] != nil {
+				st.Having = yyS.item[yypt-1].(*ast.HavingClause)
 			}
-			if yyS[yypt-0].item != nil {
-				st.WindowSpecs = (yyS[yypt-0].item.([]ast.WindowSpec))
+			if yyS.item[yypt-0] != nil {
+				st.WindowSpecs = (yyS.item[yypt-0].([]ast.WindowSpec))
 			}
-			parser.yyVAL.item = st
+			yyVAL.typ = itemType
+			yyVAL.item = st
 		}
 	case 1002:
 		{
-			st := yyS[yypt-3].item.(*ast.SelectStmt)
-			st.LockTp = yyS[yypt-0].item.(ast.SelectLockType)
+			st := yyS.item[yypt-3].(*ast.SelectStmt)
+			st.LockTp = yyS.item[yypt-0].(ast.SelectLockType)
 			lastField := st.Fields.Fields[len(st.Fields.Fields)-1]
 			if lastField.Expr != nil && lastField.AsName.O == "" {
 				src := parser.src
 				var lastEnd int
-				if yyS[yypt-2].item != nil {
-					lastEnd = yyS[yypt-2].offset - 1
-				} else if yyS[yypt-1].item != nil {
-					lastEnd = yyS[yypt-1].offset - 1
-				} else if yyS[yypt-0].item != ast.SelectLockNone {
-					lastEnd = yyS[yypt].offset - 1
+				if yyS.item[yypt-2] != nil {
+					lastEnd = yyS.offset[yypt-2] - 1
+				} else if yyS.item[yypt-1] != nil {
+					lastEnd = yyS.offset[yypt-1] - 1
+				} else if yyS.item[yypt-0] != ast.SelectLockNone {
+					lastEnd = yyS.offset[yypt] - 1
 				} else {
 					lastEnd = len(src)
 					if src[lastEnd-1] == ';' {
@@ -11615,330 +12234,397 @@ yynewstate:
 				}
 				lastField.SetText(src[lastField.Offset:lastEnd])
 			}
-			if yyS[yypt-2].item != nil {
-				st.OrderBy = yyS[yypt-2].item.(*ast.OrderByClause)
+			if yyS.item[yypt-2] != nil {
+				st.OrderBy = yyS.item[yypt-2].(*ast.OrderByClause)
 			}
-			if yyS[yypt-1].item != nil {
-				st.Limit = yyS[yypt-1].item.(*ast.Limit)
+			if yyS.item[yypt-1] != nil {
+				st.Limit = yyS.item[yypt-1].(*ast.Limit)
 			}
-			parser.yyVAL.statement = st
+			yyVAL.typ = statementType
+			yyVAL.statement = st
 		}
 	case 1003:
 		{
-			st := yyS[yypt-3].item.(*ast.SelectStmt)
-			if yyS[yypt-2].item != nil {
-				st.OrderBy = yyS[yypt-2].item.(*ast.OrderByClause)
+			st := yyS.item[yypt-3].(*ast.SelectStmt)
+			if yyS.item[yypt-2] != nil {
+				st.OrderBy = yyS.item[yypt-2].(*ast.OrderByClause)
 			}
-			if yyS[yypt-1].item != nil {
-				st.Limit = yyS[yypt-1].item.(*ast.Limit)
+			if yyS.item[yypt-1] != nil {
+				st.Limit = yyS.item[yypt-1].(*ast.Limit)
 			}
-			st.LockTp = yyS[yypt-0].item.(ast.SelectLockType)
-			parser.yyVAL.statement = st
+			st.LockTp = yyS.item[yypt-0].(ast.SelectLockType)
+			yyVAL.typ = statementType
+			yyVAL.statement = st
 		}
 	case 1004:
 		{
-			st := yyS[yypt-3].item.(*ast.SelectStmt)
-			st.LockTp = yyS[yypt-0].item.(ast.SelectLockType)
-			if yyS[yypt-2].item != nil {
-				st.OrderBy = yyS[yypt-2].item.(*ast.OrderByClause)
+			st := yyS.item[yypt-3].(*ast.SelectStmt)
+			st.LockTp = yyS.item[yypt-0].(ast.SelectLockType)
+			if yyS.item[yypt-2] != nil {
+				st.OrderBy = yyS.item[yypt-2].(*ast.OrderByClause)
 			}
-			if yyS[yypt-1].item != nil {
-				st.Limit = yyS[yypt-1].item.(*ast.Limit)
+			if yyS.item[yypt-1] != nil {
+				st.Limit = yyS.item[yypt-1].(*ast.Limit)
 			}
-			parser.yyVAL.statement = st
+			yyVAL.typ = statementType
+			yyVAL.statement = st
 		}
 	case 1006:
 		{
-			parser.yyVAL.item = nil
+			yyVAL.typ = itemType
+			yyVAL.item = nil
 		}
 	case 1007:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item.([]ast.WindowSpec)
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0].([]ast.WindowSpec)
 		}
 	case 1008:
 		{
-			parser.yyVAL.item = []ast.WindowSpec{yyS[yypt-0].item.(ast.WindowSpec)}
+			yyVAL.typ = itemType
+			yyVAL.item = []ast.WindowSpec{yyS.item[yypt-0].(ast.WindowSpec)}
 		}
 	case 1009:
 		{
-			parser.yyVAL.item = append(yyS[yypt-2].item.([]ast.WindowSpec), yyS[yypt-0].item.(ast.WindowSpec))
+			yyVAL.typ = itemType
+			yyVAL.item = append(yyS.item[yypt-2].([]ast.WindowSpec), yyS.item[yypt-0].(ast.WindowSpec))
 		}
 	case 1010:
 		{
-			var spec = yyS[yypt-0].item.(ast.WindowSpec)
-			spec.Name = yyS[yypt-2].item.(model.CIStr)
-			parser.yyVAL.item = spec
+			var spec = yyS.item[yypt-0].(ast.WindowSpec)
+			spec.Name = yyS.item[yypt-2].(model.CIStr)
+			yyVAL.typ = itemType
+			yyVAL.item = spec
 		}
 	case 1011:
 		{
-			parser.yyVAL.item = model.NewCIStr(yyS[yypt-0].ident)
+			yyVAL.typ = itemType
+			yyVAL.item = model.NewCIStr(yyS.ident[yypt-0])
 		}
 	case 1012:
 		{
-			parser.yyVAL.item = yyS[yypt-1].item.(ast.WindowSpec)
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-1].(ast.WindowSpec)
 		}
 	case 1013:
 		{
-			spec := ast.WindowSpec{Ref: yyS[yypt-3].item.(model.CIStr)}
-			if yyS[yypt-2].item != nil {
-				spec.PartitionBy = yyS[yypt-2].item.(*ast.PartitionByClause)
+			spec := ast.WindowSpec{Ref: yyS.item[yypt-3].(model.CIStr)}
+			if yyS.item[yypt-2] != nil {
+				spec.PartitionBy = yyS.item[yypt-2].(*ast.PartitionByClause)
 			}
-			if yyS[yypt-1].item != nil {
-				spec.OrderBy = yyS[yypt-1].item.(*ast.OrderByClause)
+			if yyS.item[yypt-1] != nil {
+				spec.OrderBy = yyS.item[yypt-1].(*ast.OrderByClause)
 			}
-			if yyS[yypt-0].item != nil {
-				spec.Frame = yyS[yypt-0].item.(*ast.FrameClause)
+			if yyS.item[yypt-0] != nil {
+				spec.Frame = yyS.item[yypt-0].(*ast.FrameClause)
 			}
-			parser.yyVAL.item = spec
+			yyVAL.typ = itemType
+			yyVAL.item = spec
 		}
 	case 1014:
 		{
-			parser.yyVAL.item = model.CIStr{}
+			yyVAL.typ = itemType
+			yyVAL.item = model.CIStr{}
 		}
 	case 1015:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item.(model.CIStr)
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0].(model.CIStr)
 		}
 	case 1016:
 		{
-			parser.yyVAL.item = nil
+			yyVAL.typ = itemType
+			yyVAL.item = nil
 		}
 	case 1017:
 		{
-			parser.yyVAL.item = &ast.PartitionByClause{Items: yyS[yypt-0].item.([]*ast.ByItem)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.PartitionByClause{Items: yyS.item[yypt-0].([]*ast.ByItem)}
 		}
 	case 1018:
 		{
-			parser.yyVAL.item = nil
+			yyVAL.typ = itemType
+			yyVAL.item = nil
 		}
 	case 1019:
 		{
-			parser.yyVAL.item = &ast.OrderByClause{Items: yyS[yypt-0].item.([]*ast.ByItem)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.OrderByClause{Items: yyS.item[yypt-0].([]*ast.ByItem)}
 		}
 	case 1020:
 		{
-			parser.yyVAL.item = nil
+			yyVAL.typ = itemType
+			yyVAL.item = nil
 		}
 	case 1021:
 		{
-			parser.yyVAL.item = &ast.FrameClause{
-				Type:   yyS[yypt-1].item.(ast.FrameType),
-				Extent: yyS[yypt-0].item.(ast.FrameExtent),
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.FrameClause{
+				Type:   yyS.item[yypt-1].(ast.FrameType),
+				Extent: yyS.item[yypt-0].(ast.FrameExtent),
 			}
 		}
 	case 1022:
 		{
-			parser.yyVAL.item = ast.FrameType(ast.Rows)
+			yyVAL.typ = itemType
+			yyVAL.item = ast.FrameType(ast.Rows)
 		}
 	case 1023:
 		{
-			parser.yyVAL.item = ast.FrameType(ast.Ranges)
+			yyVAL.typ = itemType
+			yyVAL.item = ast.FrameType(ast.Ranges)
 		}
 	case 1024:
 		{
-			parser.yyVAL.item = ast.FrameType(ast.Groups)
+			yyVAL.typ = itemType
+			yyVAL.item = ast.FrameType(ast.Groups)
 		}
 	case 1025:
 		{
-			parser.yyVAL.item = ast.FrameExtent{
-				Start: yyS[yypt-0].item.(ast.FrameBound),
+			yyVAL.typ = itemType
+			yyVAL.item = ast.FrameExtent{
+				Start: yyS.item[yypt-0].(ast.FrameBound),
 				End:   ast.FrameBound{Type: ast.CurrentRow},
 			}
 		}
 	case 1026:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item.(ast.FrameExtent)
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0].(ast.FrameExtent)
 		}
 	case 1027:
 		{
-			parser.yyVAL.item = ast.FrameBound{Type: ast.Preceding, UnBounded: true}
+			yyVAL.typ = itemType
+			yyVAL.item = ast.FrameBound{Type: ast.Preceding, UnBounded: true}
 		}
 	case 1028:
 		{
-			parser.yyVAL.item = ast.FrameBound{Type: ast.Preceding, Expr: ast.NewValueExpr(yyS[yypt-1].item)}
+			yyVAL.typ = itemType
+			yyVAL.item = ast.FrameBound{Type: ast.Preceding, Expr: ast.NewValueExpr(yyS.item[yypt-1])}
 		}
 	case 1029:
 		{
-			parser.yyVAL.item = ast.FrameBound{Type: ast.Preceding, Expr: ast.NewParamMarkerExpr(yyS[yypt].offset)}
+			yyVAL.typ = itemType
+			yyVAL.item = ast.FrameBound{Type: ast.Preceding, Expr: ast.NewParamMarkerExpr(yyS.offset[yypt])}
 		}
 	case 1030:
 		{
-			parser.yyVAL.item = ast.FrameBound{Type: ast.Preceding, Expr: yyS[yypt-2].expr, Unit: ast.NewValueExpr(yyS[yypt-1].ident)}
+			yyVAL.typ = itemType
+			yyVAL.item = ast.FrameBound{Type: ast.Preceding, Expr: yyS.expr[yypt-2], Unit: ast.NewValueExpr(yyS.ident[yypt-1])}
 		}
 	case 1031:
 		{
-			parser.yyVAL.item = ast.FrameBound{Type: ast.CurrentRow}
+			yyVAL.typ = itemType
+			yyVAL.item = ast.FrameBound{Type: ast.CurrentRow}
 		}
 	case 1032:
 		{
-			parser.yyVAL.item = ast.FrameExtent{Start: yyS[yypt-2].item.(ast.FrameBound), End: yyS[yypt-0].item.(ast.FrameBound)}
+			yyVAL.typ = itemType
+			yyVAL.item = ast.FrameExtent{Start: yyS.item[yypt-2].(ast.FrameBound), End: yyS.item[yypt-0].(ast.FrameBound)}
 		}
 	case 1033:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item.(ast.FrameBound)
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0].(ast.FrameBound)
 		}
 	case 1034:
 		{
-			parser.yyVAL.item = ast.FrameBound{Type: ast.Following, UnBounded: true}
+			yyVAL.typ = itemType
+			yyVAL.item = ast.FrameBound{Type: ast.Following, UnBounded: true}
 		}
 	case 1035:
 		{
-			parser.yyVAL.item = ast.FrameBound{Type: ast.Following, Expr: ast.NewValueExpr(yyS[yypt-1].item)}
+			yyVAL.typ = itemType
+			yyVAL.item = ast.FrameBound{Type: ast.Following, Expr: ast.NewValueExpr(yyS.item[yypt-1])}
 		}
 	case 1036:
 		{
-			parser.yyVAL.item = ast.FrameBound{Type: ast.Following, Expr: ast.NewParamMarkerExpr(yyS[yypt].offset)}
+			yyVAL.typ = itemType
+			yyVAL.item = ast.FrameBound{Type: ast.Following, Expr: ast.NewParamMarkerExpr(yyS.offset[yypt])}
 		}
 	case 1037:
 		{
-			parser.yyVAL.item = ast.FrameBound{Type: ast.Following, Expr: yyS[yypt-2].expr, Unit: ast.NewValueExpr(yyS[yypt-1].ident)}
+			yyVAL.typ = itemType
+			yyVAL.item = ast.FrameBound{Type: ast.Following, Expr: yyS.expr[yypt-2], Unit: ast.NewValueExpr(yyS.ident[yypt-1])}
 		}
 	case 1038:
 		{
-			parser.yyVAL.item = nil
+			yyVAL.typ = itemType
+			yyVAL.item = nil
 		}
 	case 1039:
 		{
-			spec := yyS[yypt-0].item.(ast.WindowSpec)
-			parser.yyVAL.item = &spec
+			spec := yyS.item[yypt-0].(ast.WindowSpec)
+			yyVAL.typ = itemType
+			yyVAL.item = &spec
 		}
 	case 1040:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item.(ast.WindowSpec)
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0].(ast.WindowSpec)
 		}
 	case 1041:
 		{
-			parser.yyVAL.item = ast.WindowSpec{Name: yyS[yypt-0].item.(model.CIStr), OnlyAlias: true}
+			yyVAL.typ = itemType
+			yyVAL.item = ast.WindowSpec{Name: yyS.item[yypt-0].(model.CIStr), OnlyAlias: true}
 		}
 	case 1042:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item.(ast.WindowSpec)
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0].(ast.WindowSpec)
 		}
 	case 1043:
 		{
-			parser.yyVAL.item = &ast.WindowFuncExpr{F: yyS[yypt-3].ident, Spec: yyS[yypt-0].item.(ast.WindowSpec)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.WindowFuncExpr{F: yyS.ident[yypt-3], Spec: yyS.item[yypt-0].(ast.WindowSpec)}
 		}
 	case 1044:
 		{
-			parser.yyVAL.item = &ast.WindowFuncExpr{F: yyS[yypt-3].ident, Spec: yyS[yypt-0].item.(ast.WindowSpec)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.WindowFuncExpr{F: yyS.ident[yypt-3], Spec: yyS.item[yypt-0].(ast.WindowSpec)}
 		}
 	case 1045:
 		{
-			parser.yyVAL.item = &ast.WindowFuncExpr{F: yyS[yypt-3].ident, Spec: yyS[yypt-0].item.(ast.WindowSpec)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.WindowFuncExpr{F: yyS.ident[yypt-3], Spec: yyS.item[yypt-0].(ast.WindowSpec)}
 		}
 	case 1046:
 		{
-			parser.yyVAL.item = &ast.WindowFuncExpr{F: yyS[yypt-3].ident, Spec: yyS[yypt-0].item.(ast.WindowSpec)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.WindowFuncExpr{F: yyS.ident[yypt-3], Spec: yyS.item[yypt-0].(ast.WindowSpec)}
 		}
 	case 1047:
 		{
-			parser.yyVAL.item = &ast.WindowFuncExpr{F: yyS[yypt-3].ident, Spec: yyS[yypt-0].item.(ast.WindowSpec)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.WindowFuncExpr{F: yyS.ident[yypt-3], Spec: yyS.item[yypt-0].(ast.WindowSpec)}
 		}
 	case 1048:
 		{
-			parser.yyVAL.item = &ast.WindowFuncExpr{F: yyS[yypt-4].ident, Args: []ast.ExprNode{yyS[yypt-2].expr}, Spec: yyS[yypt-0].item.(ast.WindowSpec)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.WindowFuncExpr{F: yyS.ident[yypt-4], Args: []ast.ExprNode{yyS.expr[yypt-2]}, Spec: yyS.item[yypt-0].(ast.WindowSpec)}
 		}
 	case 1049:
 		{
-			args := []ast.ExprNode{yyS[yypt-4].expr}
-			if yyS[yypt-3].item != nil {
-				args = append(args, yyS[yypt-3].item.([]ast.ExprNode)...)
+			args := []ast.ExprNode{yyS.expr[yypt-4]}
+			if yyS.item[yypt-3] != nil {
+				args = append(args, yyS.item[yypt-3].([]ast.ExprNode)...)
 			}
-			parser.yyVAL.item = &ast.WindowFuncExpr{F: yyS[yypt-6].ident, Args: args, IgnoreNull: yyS[yypt-1].item.(bool), Spec: yyS[yypt-0].item.(ast.WindowSpec)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.WindowFuncExpr{F: yyS.ident[yypt-6], Args: args, IgnoreNull: yyS.item[yypt-1].(bool), Spec: yyS.item[yypt-0].(ast.WindowSpec)}
 		}
 	case 1050:
 		{
-			args := []ast.ExprNode{yyS[yypt-4].expr}
-			if yyS[yypt-3].item != nil {
-				args = append(args, yyS[yypt-3].item.([]ast.ExprNode)...)
+			args := []ast.ExprNode{yyS.expr[yypt-4]}
+			if yyS.item[yypt-3] != nil {
+				args = append(args, yyS.item[yypt-3].([]ast.ExprNode)...)
 			}
-			parser.yyVAL.item = &ast.WindowFuncExpr{F: yyS[yypt-6].ident, Args: args, IgnoreNull: yyS[yypt-1].item.(bool), Spec: yyS[yypt-0].item.(ast.WindowSpec)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.WindowFuncExpr{F: yyS.ident[yypt-6], Args: args, IgnoreNull: yyS.item[yypt-1].(bool), Spec: yyS.item[yypt-0].(ast.WindowSpec)}
 		}
 	case 1051:
 		{
-			parser.yyVAL.item = &ast.WindowFuncExpr{F: yyS[yypt-5].ident, Args: []ast.ExprNode{yyS[yypt-3].expr}, IgnoreNull: yyS[yypt-1].item.(bool), Spec: yyS[yypt-0].item.(ast.WindowSpec)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.WindowFuncExpr{F: yyS.ident[yypt-5], Args: []ast.ExprNode{yyS.expr[yypt-3]}, IgnoreNull: yyS.item[yypt-1].(bool), Spec: yyS.item[yypt-0].(ast.WindowSpec)}
 		}
 	case 1052:
 		{
-			parser.yyVAL.item = &ast.WindowFuncExpr{F: yyS[yypt-5].ident, Args: []ast.ExprNode{yyS[yypt-3].expr}, IgnoreNull: yyS[yypt-1].item.(bool), Spec: yyS[yypt-0].item.(ast.WindowSpec)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.WindowFuncExpr{F: yyS.ident[yypt-5], Args: []ast.ExprNode{yyS.expr[yypt-3]}, IgnoreNull: yyS.item[yypt-1].(bool), Spec: yyS.item[yypt-0].(ast.WindowSpec)}
 		}
 	case 1053:
 		{
-			parser.yyVAL.item = &ast.WindowFuncExpr{F: yyS[yypt-8].ident, Args: []ast.ExprNode{yyS[yypt-6].expr, yyS[yypt-4].expr}, FromLast: yyS[yypt-2].item.(bool), IgnoreNull: yyS[yypt-1].item.(bool), Spec: yyS[yypt-0].item.(ast.WindowSpec)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.WindowFuncExpr{F: yyS.ident[yypt-8], Args: []ast.ExprNode{yyS.expr[yypt-6], yyS.expr[yypt-4]}, FromLast: yyS.item[yypt-2].(bool), IgnoreNull: yyS.item[yypt-1].(bool), Spec: yyS.item[yypt-0].(ast.WindowSpec)}
 		}
 	case 1054:
 		{
-			parser.yyVAL.item = nil
+			yyVAL.typ = itemType
+			yyVAL.item = nil
 		}
 	case 1055:
 		{
-			args := []ast.ExprNode{ast.NewValueExpr(yyS[yypt-1].item)}
-			if yyS[yypt-0].item != nil {
-				args = append(args, yyS[yypt-0].item.(ast.ExprNode))
+			args := []ast.ExprNode{ast.NewValueExpr(yyS.item[yypt-1])}
+			if yyS.item[yypt-0] != nil {
+				args = append(args, yyS.item[yypt-0].(ast.ExprNode))
 			}
-			parser.yyVAL.item = args
+			yyVAL.typ = itemType
+			yyVAL.item = args
 		}
 	case 1056:
 		{
-			args := []ast.ExprNode{ast.NewValueExpr(yyS[yypt-1].item)}
-			if yyS[yypt-0].item != nil {
-				args = append(args, yyS[yypt-0].item.(ast.ExprNode))
+			args := []ast.ExprNode{ast.NewValueExpr(yyS.item[yypt-1])}
+			if yyS.item[yypt-0] != nil {
+				args = append(args, yyS.item[yypt-0].(ast.ExprNode))
 			}
-			parser.yyVAL.item = args
+			yyVAL.typ = itemType
+			yyVAL.item = args
 		}
 	case 1057:
 		{
-			parser.yyVAL.item = nil
+			yyVAL.typ = itemType
+			yyVAL.item = nil
 		}
 	case 1058:
 		{
-			parser.yyVAL.item = yyS[yypt-0].expr
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.expr[yypt-0]
 		}
 	case 1059:
 		{
-			parser.yyVAL.item = false
+			yyVAL.typ = itemType
+			yyVAL.item = false
 		}
 	case 1060:
 		{
-			parser.yyVAL.item = false
+			yyVAL.typ = itemType
+			yyVAL.item = false
 		}
 	case 1061:
 		{
-			parser.yyVAL.item = true
+			yyVAL.typ = itemType
+			yyVAL.item = true
 		}
 	case 1062:
 		{
-			parser.yyVAL.item = false
+			yyVAL.typ = itemType
+			yyVAL.item = false
 		}
 	case 1063:
 		{
-			parser.yyVAL.item = false
+			yyVAL.typ = itemType
+			yyVAL.item = false
 		}
 	case 1064:
 		{
-			parser.yyVAL.item = true
+			yyVAL.typ = itemType
+			yyVAL.item = true
 		}
 	case 1065:
 		{
-			parser.yyVAL.item = &ast.TableRefsClause{TableRefs: yyS[yypt-0].item.(*ast.Join)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TableRefsClause{TableRefs: yyS.item[yypt-0].(*ast.Join)}
 		}
 	case 1066:
 		{
-			if j, ok := yyS[yypt-0].item.(*ast.Join); ok {
+			if j, ok := yyS.item[yypt-0].(*ast.Join); ok {
 				// if $1 is Join, use it directly
-				parser.yyVAL.item = j
+				yyVAL.typ = itemType
+				yyVAL.item = j
 			} else {
-				parser.yyVAL.item = &ast.Join{Left: yyS[yypt-0].item.(ast.ResultSetNode), Right: nil}
+				yyVAL.typ = itemType
+				yyVAL.item = &ast.Join{Left: yyS.item[yypt-0].(ast.ResultSetNode), Right: nil}
 			}
 		}
 	case 1067:
 		{
 			/* from a, b is default cross join */
-			parser.yyVAL.item = &ast.Join{Left: yyS[yypt-2].item.(ast.ResultSetNode), Right: yyS[yypt-0].item.(ast.ResultSetNode), Tp: ast.CrossJoin}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.Join{Left: yyS.item[yypt-2].(ast.ResultSetNode), Right: yyS.item[yypt-0].(ast.ResultSetNode), Tp: ast.CrossJoin}
 		}
 	case 1068:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0]
 		}
 	case 1069:
 		{
@@ -11946,663 +12632,785 @@ yynewstate:
 			* ODBC escape syntax for outer join is { OJ join_table }
 			* Use an Identifier for OJ
 			 */
-			parser.yyVAL.item = yyS[yypt-1].item
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-1]
 		}
 	case 1070:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0]
 		}
 	case 1071:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0]
 		}
 	case 1072:
 		{
-			tn := yyS[yypt-3].item.(*ast.TableName)
-			tn.PartitionNames = yyS[yypt-2].item.([]model.CIStr)
-			tn.IndexHints = yyS[yypt-0].item.([]*ast.IndexHint)
-			parser.yyVAL.item = &ast.TableSource{Source: tn, AsName: yyS[yypt-1].item.(model.CIStr)}
+			tn := yyS.item[yypt-3].(*ast.TableName)
+			tn.PartitionNames = yyS.item[yypt-2].([]model.CIStr)
+			tn.IndexHints = yyS.item[yypt-0].([]*ast.IndexHint)
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TableSource{Source: tn, AsName: yyS.item[yypt-1].(model.CIStr)}
 		}
 	case 1073:
 		{
-			st := yyS[yypt-2].statement.(*ast.SelectStmt)
-			endOffset := parser.endOffset(&yyS[yypt-1])
+			st := yyS.statement[yypt-2].(*ast.SelectStmt)
+			endOffset := parser.endOffset(yyS.offset[yypt-1])
 			parser.setLastSelectFieldText(st, endOffset)
-			parser.yyVAL.item = &ast.TableSource{Source: yyS[yypt-2].statement.(*ast.SelectStmt), AsName: yyS[yypt-0].item.(model.CIStr)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TableSource{Source: yyS.statement[yypt-2].(*ast.SelectStmt), AsName: yyS.item[yypt-0].(model.CIStr)}
 		}
 	case 1074:
 		{
-			parser.yyVAL.item = &ast.TableSource{Source: yyS[yypt-2].statement.(*ast.UnionStmt), AsName: yyS[yypt-0].item.(model.CIStr)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TableSource{Source: yyS.statement[yypt-2].(*ast.UnionStmt), AsName: yyS.item[yypt-0].(model.CIStr)}
 		}
 	case 1075:
 		{
-			parser.yyVAL.item = yyS[yypt-1].item
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-1]
 		}
 	case 1076:
 		{
-			parser.yyVAL.item = []model.CIStr{}
+			yyVAL.typ = itemType
+			yyVAL.item = []model.CIStr{}
 		}
 	case 1077:
 		{
-			parser.yyVAL.item = yyS[yypt-1].item
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-1]
 		}
 	case 1078:
 		{
-			parser.yyVAL.item = model.CIStr{}
+			yyVAL.typ = itemType
+			yyVAL.item = model.CIStr{}
 		}
 	case 1079:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0]
 		}
 	case 1080:
 		{
-			parser.yyVAL.item = model.NewCIStr(yyS[yypt-0].ident)
+			yyVAL.typ = itemType
+			yyVAL.item = model.NewCIStr(yyS.ident[yypt-0])
 		}
 	case 1081:
 		{
-			parser.yyVAL.item = model.NewCIStr(yyS[yypt-0].ident)
+			yyVAL.typ = itemType
+			yyVAL.item = model.NewCIStr(yyS.ident[yypt-0])
 		}
 	case 1082:
 		{
-			parser.yyVAL.item = ast.HintUse
+			yyVAL.typ = itemType
+			yyVAL.item = ast.HintUse
 		}
 	case 1083:
 		{
-			parser.yyVAL.item = ast.HintIgnore
+			yyVAL.typ = itemType
+			yyVAL.item = ast.HintIgnore
 		}
 	case 1084:
 		{
-			parser.yyVAL.item = ast.HintForce
+			yyVAL.typ = itemType
+			yyVAL.item = ast.HintForce
 		}
 	case 1085:
 		{
-			parser.yyVAL.item = ast.HintForScan
+			yyVAL.typ = itemType
+			yyVAL.item = ast.HintForScan
 		}
 	case 1086:
 		{
-			parser.yyVAL.item = ast.HintForJoin
+			yyVAL.typ = itemType
+			yyVAL.item = ast.HintForJoin
 		}
 	case 1087:
 		{
-			parser.yyVAL.item = ast.HintForOrderBy
+			yyVAL.typ = itemType
+			yyVAL.item = ast.HintForOrderBy
 		}
 	case 1088:
 		{
-			parser.yyVAL.item = ast.HintForGroupBy
+			yyVAL.typ = itemType
+			yyVAL.item = ast.HintForGroupBy
 		}
 	case 1089:
 		{
-			parser.yyVAL.item = &ast.IndexHint{
-				IndexNames: yyS[yypt-1].item.([]model.CIStr),
-				HintType:   yyS[yypt-4].item.(ast.IndexHintType),
-				HintScope:  yyS[yypt-3].item.(ast.IndexHintScope),
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.IndexHint{
+				IndexNames: yyS.item[yypt-1].([]model.CIStr),
+				HintType:   yyS.item[yypt-4].(ast.IndexHintType),
+				HintScope:  yyS.item[yypt-3].(ast.IndexHintScope),
 			}
 		}
 	case 1090:
 		{
 			var nameList []model.CIStr
-			parser.yyVAL.item = nameList
+			yyVAL.typ = itemType
+			yyVAL.item = nameList
 		}
 	case 1091:
 		{
-			parser.yyVAL.item = []model.CIStr{model.NewCIStr(yyS[yypt-0].ident)}
+			yyVAL.typ = itemType
+			yyVAL.item = []model.CIStr{model.NewCIStr(yyS.ident[yypt-0])}
 		}
 	case 1092:
 		{
-			parser.yyVAL.item = append(yyS[yypt-2].item.([]model.CIStr), model.NewCIStr(yyS[yypt-0].ident))
+			yyVAL.typ = itemType
+			yyVAL.item = append(yyS.item[yypt-2].([]model.CIStr), model.NewCIStr(yyS.ident[yypt-0]))
 		}
 	case 1093:
 		{
-			parser.yyVAL.item = []model.CIStr{model.NewCIStr(yyS[yypt-0].ident)}
+			yyVAL.typ = itemType
+			yyVAL.item = []model.CIStr{model.NewCIStr(yyS.ident[yypt-0])}
 		}
 	case 1094:
 		{
-			parser.yyVAL.item = []*ast.IndexHint{yyS[yypt-0].item.(*ast.IndexHint)}
+			yyVAL.typ = itemType
+			yyVAL.item = []*ast.IndexHint{yyS.item[yypt-0].(*ast.IndexHint)}
 		}
 	case 1095:
 		{
-			parser.yyVAL.item = append(yyS[yypt-1].item.([]*ast.IndexHint), yyS[yypt-0].item.(*ast.IndexHint))
+			yyVAL.typ = itemType
+			yyVAL.item = append(yyS.item[yypt-1].([]*ast.IndexHint), yyS.item[yypt-0].(*ast.IndexHint))
 		}
 	case 1096:
 		{
 			var hintList []*ast.IndexHint
-			parser.yyVAL.item = hintList
+			yyVAL.typ = itemType
+			yyVAL.item = hintList
 		}
 	case 1097:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0]
 		}
 	case 1098:
 		{
-			parser.yyVAL.item = &ast.Join{Left: yyS[yypt-2].item.(ast.ResultSetNode), Right: yyS[yypt-0].item.(ast.ResultSetNode), Tp: ast.CrossJoin}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.Join{Left: yyS.item[yypt-2].(ast.ResultSetNode), Right: yyS.item[yypt-0].(ast.ResultSetNode), Tp: ast.CrossJoin}
 		}
 	case 1099:
 		{
-			on := &ast.OnCondition{Expr: yyS[yypt-0].expr}
-			parser.yyVAL.item = &ast.Join{Left: yyS[yypt-4].item.(ast.ResultSetNode), Right: yyS[yypt-2].item.(ast.ResultSetNode), Tp: ast.CrossJoin, On: on}
+			on := &ast.OnCondition{Expr: yyS.expr[yypt-0]}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.Join{Left: yyS.item[yypt-4].(ast.ResultSetNode), Right: yyS.item[yypt-2].(ast.ResultSetNode), Tp: ast.CrossJoin, On: on}
 		}
 	case 1100:
 		{
-			parser.yyVAL.item = &ast.Join{Left: yyS[yypt-6].item.(ast.ResultSetNode), Right: yyS[yypt-4].item.(ast.ResultSetNode), Tp: ast.CrossJoin, Using: yyS[yypt-1].item.([]*ast.ColumnName)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.Join{Left: yyS.item[yypt-6].(ast.ResultSetNode), Right: yyS.item[yypt-4].(ast.ResultSetNode), Tp: ast.CrossJoin, Using: yyS.item[yypt-1].([]*ast.ColumnName)}
 		}
 	case 1101:
 		{
-			on := &ast.OnCondition{Expr: yyS[yypt-0].expr}
-			parser.yyVAL.item = &ast.Join{Left: yyS[yypt-6].item.(ast.ResultSetNode), Right: yyS[yypt-2].item.(ast.ResultSetNode), Tp: yyS[yypt-5].item.(ast.JoinType), On: on}
+			on := &ast.OnCondition{Expr: yyS.expr[yypt-0]}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.Join{Left: yyS.item[yypt-6].(ast.ResultSetNode), Right: yyS.item[yypt-2].(ast.ResultSetNode), Tp: yyS.item[yypt-5].(ast.JoinType), On: on}
 		}
 	case 1102:
 		{
-			parser.yyVAL.item = &ast.Join{Left: yyS[yypt-8].item.(ast.ResultSetNode), Right: yyS[yypt-4].item.(ast.ResultSetNode), Tp: yyS[yypt-7].item.(ast.JoinType), Using: yyS[yypt-1].item.([]*ast.ColumnName)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.Join{Left: yyS.item[yypt-8].(ast.ResultSetNode), Right: yyS.item[yypt-4].(ast.ResultSetNode), Tp: yyS.item[yypt-7].(ast.JoinType), Using: yyS.item[yypt-1].([]*ast.ColumnName)}
 		}
 	case 1103:
 		{
-			parser.yyVAL.item = &ast.Join{Left: yyS[yypt-3].item.(ast.ResultSetNode), Right: yyS[yypt-0].item.(ast.ResultSetNode), NaturalJoin: true}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.Join{Left: yyS.item[yypt-3].(ast.ResultSetNode), Right: yyS.item[yypt-0].(ast.ResultSetNode), NaturalJoin: true}
 		}
 	case 1104:
 		{
-			parser.yyVAL.item = &ast.Join{Left: yyS[yypt-5].item.(ast.ResultSetNode), Right: yyS[yypt-0].item.(ast.ResultSetNode), Tp: yyS[yypt-3].item.(ast.JoinType), NaturalJoin: true}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.Join{Left: yyS.item[yypt-5].(ast.ResultSetNode), Right: yyS.item[yypt-0].(ast.ResultSetNode), Tp: yyS.item[yypt-3].(ast.JoinType), NaturalJoin: true}
 		}
 	case 1105:
 		{
-			parser.yyVAL.item = &ast.Join{Left: yyS[yypt-2].item.(ast.ResultSetNode), Right: yyS[yypt-0].item.(ast.ResultSetNode), StraightJoin: true}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.Join{Left: yyS.item[yypt-2].(ast.ResultSetNode), Right: yyS.item[yypt-0].(ast.ResultSetNode), StraightJoin: true}
 		}
 	case 1106:
 		{
-			on := &ast.OnCondition{Expr: yyS[yypt-0].expr}
-			parser.yyVAL.item = &ast.Join{Left: yyS[yypt-4].item.(ast.ResultSetNode), Right: yyS[yypt-2].item.(ast.ResultSetNode), StraightJoin: true, On: on}
+			on := &ast.OnCondition{Expr: yyS.expr[yypt-0]}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.Join{Left: yyS.item[yypt-4].(ast.ResultSetNode), Right: yyS.item[yypt-2].(ast.ResultSetNode), StraightJoin: true, On: on}
 		}
 	case 1107:
 		{
-			parser.yyVAL.item = ast.LeftJoin
+			yyVAL.typ = itemType
+			yyVAL.item = ast.LeftJoin
 		}
 	case 1108:
 		{
-			parser.yyVAL.item = ast.RightJoin
+			yyVAL.typ = itemType
+			yyVAL.item = ast.RightJoin
 		}
 	case 1114:
 		{
-			parser.yyVAL.item = nil
+			yyVAL.typ = itemType
+			yyVAL.item = nil
 		}
 	case 1115:
 		{
-			parser.yyVAL.item = &ast.Limit{Count: yyS[yypt-0].item.(ast.ValueExpr)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.Limit{Count: yyS.item[yypt-0].(ast.ValueExpr)}
 		}
 	case 1116:
 		{
-			parser.yyVAL.item = ast.NewValueExpr(yyS[yypt-0].item)
+			yyVAL.typ = itemType
+			yyVAL.item = ast.NewValueExpr(yyS.item[yypt-0])
 		}
 	case 1117:
 		{
-			parser.yyVAL.item = ast.NewParamMarkerExpr(yyS[yypt].offset)
+			yyVAL.typ = itemType
+			yyVAL.item = ast.NewParamMarkerExpr(yyS.offset[yypt])
 		}
 	case 1118:
 		{
-			parser.yyVAL.item = nil
+			yyVAL.typ = itemType
+			yyVAL.item = nil
 		}
 	case 1119:
 		{
-			parser.yyVAL.item = &ast.Limit{Count: yyS[yypt-0].item.(ast.ExprNode)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.Limit{Count: yyS.item[yypt-0].(ast.ExprNode)}
 		}
 	case 1120:
 		{
-			parser.yyVAL.item = &ast.Limit{Offset: yyS[yypt-2].item.(ast.ExprNode), Count: yyS[yypt-0].item.(ast.ExprNode)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.Limit{Offset: yyS.item[yypt-2].(ast.ExprNode), Count: yyS.item[yypt-0].(ast.ExprNode)}
 		}
 	case 1121:
 		{
-			parser.yyVAL.item = &ast.Limit{Offset: yyS[yypt-0].item.(ast.ExprNode), Count: yyS[yypt-2].item.(ast.ExprNode)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.Limit{Offset: yyS.item[yypt-0].(ast.ExprNode), Count: yyS.item[yypt-2].(ast.ExprNode)}
 		}
 	case 1122:
 		{
 			opt := &ast.SelectStmtOpts{}
-			if yyS[yypt-8].item != nil {
-				opt.TableHints = yyS[yypt-8].item.([]*ast.TableOptimizerHint)
+			if yyS.item[yypt-8] != nil {
+				opt.TableHints = yyS.item[yypt-8].([]*ast.TableOptimizerHint)
 			}
-			if yyS[yypt-7].item != nil {
-				opt.Distinct = yyS[yypt-7].item.(bool)
+			if yyS.item[yypt-7] != nil {
+				opt.Distinct = yyS.item[yypt-7].(bool)
 			}
-			if yyS[yypt-6].item != nil {
-				opt.Priority = yyS[yypt-6].item.(mysql.PriorityEnum)
+			if yyS.item[yypt-6] != nil {
+				opt.Priority = yyS.item[yypt-6].(mysql.PriorityEnum)
 			}
-			if yyS[yypt-5].item != nil {
-				opt.SQLSmallResult = yyS[yypt-5].item.(bool)
+			if yyS.item[yypt-5] != nil {
+				opt.SQLSmallResult = yyS.item[yypt-5].(bool)
 			}
-			if yyS[yypt-4].item != nil {
-				opt.SQLBigResult = yyS[yypt-4].item.(bool)
+			if yyS.item[yypt-4] != nil {
+				opt.SQLBigResult = yyS.item[yypt-4].(bool)
 			}
-			if yyS[yypt-3].item != nil {
-				opt.SQLBufferResult = yyS[yypt-3].item.(bool)
+			if yyS.item[yypt-3] != nil {
+				opt.SQLBufferResult = yyS.item[yypt-3].(bool)
 			}
-			if yyS[yypt-2].item != nil {
-				opt.SQLCache = yyS[yypt-2].item.(bool)
+			if yyS.item[yypt-2] != nil {
+				opt.SQLCache = yyS.item[yypt-2].(bool)
 			}
-			if yyS[yypt-1].item != nil {
-				opt.CalcFoundRows = yyS[yypt-1].item.(bool)
+			if yyS.item[yypt-1] != nil {
+				opt.CalcFoundRows = yyS.item[yypt-1].(bool)
 			}
-			if yyS[yypt-0].item != nil {
-				opt.StraightJoin = yyS[yypt-0].item.(bool)
+			if yyS.item[yypt-0] != nil {
+				opt.StraightJoin = yyS.item[yypt-0].(bool)
 			}
 
-			parser.yyVAL.item = opt
+			yyVAL.typ = itemType
+			yyVAL.item = opt
 		}
 	case 1123:
 		{
-			parser.yyVAL.item = nil
+			yyVAL.typ = itemType
+			yyVAL.item = nil
 		}
 	case 1124:
 		{
-			parser.yyVAL.item = yyS[yypt-1].item
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-1]
 		}
 	case 1125:
 		{
 			yyerrok()
 			parser.lastErrorAsWarn()
-			parser.yyVAL.item = nil
+			yyVAL.typ = itemType
+			yyVAL.item = nil
 		}
 	case 1126:
 		{
-			parser.yyVAL.item = []model.CIStr{model.NewCIStr(yyS[yypt-0].ident)}
+			yyVAL.typ = itemType
+			yyVAL.item = []model.CIStr{model.NewCIStr(yyS.ident[yypt-0])}
 		}
 	case 1127:
 		{
-			parser.yyVAL.item = append(yyS[yypt-2].item.([]model.CIStr), model.NewCIStr(yyS[yypt-0].ident))
+			yyVAL.typ = itemType
+			yyVAL.item = append(yyS.item[yypt-2].([]model.CIStr), model.NewCIStr(yyS.ident[yypt-0]))
 		}
 	case 1128:
 		{
-			parser.yyVAL.item = []*ast.TableOptimizerHint{yyS[yypt-0].item.(*ast.TableOptimizerHint)}
+			yyVAL.typ = itemType
+			yyVAL.item = []*ast.TableOptimizerHint{yyS.item[yypt-0].(*ast.TableOptimizerHint)}
 		}
 	case 1129:
 		{
-			parser.yyVAL.item = append(yyS[yypt-1].item.([]*ast.TableOptimizerHint), yyS[yypt-0].item.(*ast.TableOptimizerHint))
+			yyVAL.typ = itemType
+			yyVAL.item = append(yyS.item[yypt-1].([]*ast.TableOptimizerHint), yyS.item[yypt-0].(*ast.TableOptimizerHint))
 		}
 	case 1130:
 		{
-			parser.yyVAL.item = &ast.TableOptimizerHint{HintName: model.NewCIStr(yyS[yypt-3].ident), Tables: yyS[yypt-1].item.([]model.CIStr)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TableOptimizerHint{HintName: model.NewCIStr(yyS.ident[yypt-3]), Tables: yyS.item[yypt-1].([]model.CIStr)}
 		}
 	case 1131:
 		{
-			parser.yyVAL.item = &ast.TableOptimizerHint{HintName: model.NewCIStr(yyS[yypt-3].ident), Tables: yyS[yypt-1].item.([]model.CIStr)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TableOptimizerHint{HintName: model.NewCIStr(yyS.ident[yypt-3]), Tables: yyS.item[yypt-1].([]model.CIStr)}
 		}
 	case 1132:
 		{
-			parser.yyVAL.item = &ast.TableOptimizerHint{HintName: model.NewCIStr(yyS[yypt-3].ident), Tables: yyS[yypt-1].item.([]model.CIStr)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TableOptimizerHint{HintName: model.NewCIStr(yyS.ident[yypt-3]), Tables: yyS.item[yypt-1].([]model.CIStr)}
 		}
 	case 1133:
 		{
-			parser.yyVAL.item = &ast.TableOptimizerHint{HintName: model.NewCIStr(yyS[yypt-2].ident)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TableOptimizerHint{HintName: model.NewCIStr(yyS.ident[yypt-2])}
 		}
 	case 1134:
 		{
-			parser.yyVAL.item = &ast.TableOptimizerHint{HintName: model.NewCIStr(yyS[yypt-2].ident)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TableOptimizerHint{HintName: model.NewCIStr(yyS.ident[yypt-2])}
 		}
 	case 1135:
 		{
-			parser.yyVAL.item = &ast.TableOptimizerHint{HintName: model.NewCIStr(yyS[yypt-3].ident), MaxExecutionTime: getUint64FromNUM(yyS[yypt-1].item)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TableOptimizerHint{HintName: model.NewCIStr(yyS.ident[yypt-3]), MaxExecutionTime: getUint64FromNUM(yyS.item[yypt-1])}
 		}
 	case 1136:
 		{
-			parser.yyVAL.item = false
+			yyVAL.typ = itemType
+			yyVAL.item = false
 		}
 	case 1137:
 		{
-			parser.yyVAL.item = true
+			yyVAL.typ = itemType
+			yyVAL.item = true
 		}
 	case 1138:
 		{
-			parser.yyVAL.item = false
+			yyVAL.typ = itemType
+			yyVAL.item = false
 		}
 	case 1139:
 		{
-			parser.yyVAL.item = true
+			yyVAL.typ = itemType
+			yyVAL.item = true
 		}
 	case 1140:
 		{
-			parser.yyVAL.item = false
+			yyVAL.typ = itemType
+			yyVAL.item = false
 		}
 	case 1141:
 		{
-			parser.yyVAL.item = true
+			yyVAL.typ = itemType
+			yyVAL.item = true
 		}
 	case 1142:
 		{
-			parser.yyVAL.item = true
+			yyVAL.typ = itemType
+			yyVAL.item = true
 		}
 	case 1143:
 		{
-			parser.yyVAL.item = true
+			yyVAL.typ = itemType
+			yyVAL.item = true
 		}
 	case 1144:
 		{
-			parser.yyVAL.item = false
+			yyVAL.typ = itemType
+			yyVAL.item = false
 		}
 	case 1145:
 		{
-			parser.yyVAL.item = false
+			yyVAL.typ = itemType
+			yyVAL.item = false
 		}
 	case 1146:
 		{
-			parser.yyVAL.item = true
+			yyVAL.typ = itemType
+			yyVAL.item = true
 		}
 	case 1147:
 		{
-			parser.yyVAL.item = false
+			yyVAL.typ = itemType
+			yyVAL.item = false
 		}
 	case 1148:
 		{
-			parser.yyVAL.item = true
+			yyVAL.typ = itemType
+			yyVAL.item = true
 		}
 	case 1149:
 		{
-			parser.yyVAL.item = &ast.FieldList{Fields: yyS[yypt-0].item.([]*ast.SelectField)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.FieldList{Fields: yyS.item[yypt-0].([]*ast.SelectField)}
 		}
 	case 1150:
 		{
-			parser.yyVAL.item = nil
+			yyVAL.typ = itemType
+			yyVAL.item = nil
 		}
 	case 1152:
 		{
-			s := yyS[yypt-1].statement.(*ast.SelectStmt)
-			endOffset := parser.endOffset(&yyS[yypt])
+			s := yyS.statement[yypt-1].(*ast.SelectStmt)
+			endOffset := parser.endOffset(yyS.offset[yypt])
 			parser.setLastSelectFieldText(s, endOffset)
 			src := parser.src
 			// See the implementation of yyParse function
-			s.SetText(src[yyS[yypt-1].offset:yyS[yypt].offset])
-			parser.yyVAL.expr = &ast.SubqueryExpr{Query: s}
+			s.SetText(src[yyS.offset[yypt-1]:yyS.offset[yypt]])
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.SubqueryExpr{Query: s}
 		}
 	case 1153:
 		{
-			s := yyS[yypt-1].statement.(*ast.UnionStmt)
+			s := yyS.statement[yypt-1].(*ast.UnionStmt)
 			src := parser.src
 			// See the implementation of yyParse function
-			s.SetText(src[yyS[yypt-1].offset:yyS[yypt].offset])
-			parser.yyVAL.expr = &ast.SubqueryExpr{Query: s}
+			s.SetText(src[yyS.offset[yypt-1]:yyS.offset[yypt]])
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.SubqueryExpr{Query: s}
 		}
 	case 1154:
 		{
-			parser.yyVAL.item = ast.SelectLockNone
+			yyVAL.typ = itemType
+			yyVAL.item = ast.SelectLockNone
 		}
 	case 1155:
 		{
-			parser.yyVAL.item = ast.SelectLockForUpdate
+			yyVAL.typ = itemType
+			yyVAL.item = ast.SelectLockForUpdate
 		}
 	case 1156:
 		{
-			parser.yyVAL.item = ast.SelectLockInShareMode
+			yyVAL.typ = itemType
+			yyVAL.item = ast.SelectLockInShareMode
 		}
 	case 1157:
 		{
-			st := yyS[yypt-3].item.(*ast.SelectStmt)
-			union := yyS[yypt-6].item.(*ast.UnionStmt)
-			st.IsAfterUnionDistinct = yyS[yypt-4].item.(bool)
+			st := yyS.item[yypt-3].(*ast.SelectStmt)
+			union := yyS.item[yypt-6].(*ast.UnionStmt)
+			st.IsAfterUnionDistinct = yyS.item[yypt-4].(bool)
 			lastSelect := union.SelectList.Selects[len(union.SelectList.Selects)-1]
-			endOffset := parser.endOffset(&yyS[yypt-5])
+			endOffset := parser.endOffset(yyS.offset[yypt-5])
 			parser.setLastSelectFieldText(lastSelect, endOffset)
 			union.SelectList.Selects = append(union.SelectList.Selects, st)
-			if yyS[yypt-2].item != nil {
-				union.OrderBy = yyS[yypt-2].item.(*ast.OrderByClause)
+			if yyS.item[yypt-2] != nil {
+				union.OrderBy = yyS.item[yypt-2].(*ast.OrderByClause)
 			}
-			if yyS[yypt-1].item != nil {
-				union.Limit = yyS[yypt-1].item.(*ast.Limit)
+			if yyS.item[yypt-1] != nil {
+				union.Limit = yyS.item[yypt-1].(*ast.Limit)
 			}
-			if yyS[yypt-2].item == nil && yyS[yypt-1].item == nil {
-				st.LockTp = yyS[yypt-0].item.(ast.SelectLockType)
+			if yyS.item[yypt-2] == nil && yyS.item[yypt-1] == nil {
+				st.LockTp = yyS.item[yypt-0].(ast.SelectLockType)
 			}
-			parser.yyVAL.statement = union
+			yyVAL.typ = statementType
+			yyVAL.statement = union
 		}
 	case 1158:
 		{
-			st := yyS[yypt-3].item.(*ast.SelectStmt)
-			union := yyS[yypt-6].item.(*ast.UnionStmt)
-			st.IsAfterUnionDistinct = yyS[yypt-4].item.(bool)
+			st := yyS.item[yypt-3].(*ast.SelectStmt)
+			union := yyS.item[yypt-6].(*ast.UnionStmt)
+			st.IsAfterUnionDistinct = yyS.item[yypt-4].(bool)
 			lastSelect := union.SelectList.Selects[len(union.SelectList.Selects)-1]
-			endOffset := parser.endOffset(&yyS[yypt-5])
+			endOffset := parser.endOffset(yyS.offset[yypt-5])
 			parser.setLastSelectFieldText(lastSelect, endOffset)
 			union.SelectList.Selects = append(union.SelectList.Selects, st)
-			if yyS[yypt-2].item != nil {
-				union.OrderBy = yyS[yypt-2].item.(*ast.OrderByClause)
+			if yyS.item[yypt-2] != nil {
+				union.OrderBy = yyS.item[yypt-2].(*ast.OrderByClause)
 			}
-			if yyS[yypt-1].item != nil {
-				union.Limit = yyS[yypt-1].item.(*ast.Limit)
+			if yyS.item[yypt-1] != nil {
+				union.Limit = yyS.item[yypt-1].(*ast.Limit)
 			}
-			if yyS[yypt-2].item == nil && yyS[yypt-1].item == nil {
-				st.LockTp = yyS[yypt-0].item.(ast.SelectLockType)
+			if yyS.item[yypt-2] == nil && yyS.item[yypt-1] == nil {
+				st.LockTp = yyS.item[yypt-0].(ast.SelectLockType)
 			}
-			parser.yyVAL.statement = union
+			yyVAL.typ = statementType
+			yyVAL.statement = union
 		}
 	case 1159:
 		{
-			st := yyS[yypt-3].item.(*ast.SelectStmt)
-			union := yyS[yypt-6].item.(*ast.UnionStmt)
-			st.IsAfterUnionDistinct = yyS[yypt-4].item.(bool)
+			st := yyS.item[yypt-3].(*ast.SelectStmt)
+			union := yyS.item[yypt-6].(*ast.UnionStmt)
+			st.IsAfterUnionDistinct = yyS.item[yypt-4].(bool)
 			lastSelect := union.SelectList.Selects[len(union.SelectList.Selects)-1]
-			endOffset := parser.endOffset(&yyS[yypt-5])
+			endOffset := parser.endOffset(yyS.offset[yypt-5])
 			parser.setLastSelectFieldText(lastSelect, endOffset)
 			union.SelectList.Selects = append(union.SelectList.Selects, st)
-			if yyS[yypt-2].item != nil {
-				union.OrderBy = yyS[yypt-2].item.(*ast.OrderByClause)
+			if yyS.item[yypt-2] != nil {
+				union.OrderBy = yyS.item[yypt-2].(*ast.OrderByClause)
 			}
-			if yyS[yypt-1].item != nil {
-				union.Limit = yyS[yypt-1].item.(*ast.Limit)
+			if yyS.item[yypt-1] != nil {
+				union.Limit = yyS.item[yypt-1].(*ast.Limit)
 			}
-			if yyS[yypt-2].item == nil && yyS[yypt-1].item == nil {
-				st.LockTp = yyS[yypt-0].item.(ast.SelectLockType)
+			if yyS.item[yypt-2] == nil && yyS.item[yypt-1] == nil {
+				st.LockTp = yyS.item[yypt-0].(ast.SelectLockType)
 			}
-			parser.yyVAL.statement = union
+			yyVAL.typ = statementType
+			yyVAL.statement = union
 		}
 	case 1160:
 		{
-			union := yyS[yypt-7].item.(*ast.UnionStmt)
+			union := yyS.item[yypt-7].(*ast.UnionStmt)
 			lastSelect := union.SelectList.Selects[len(union.SelectList.Selects)-1]
-			endOffset := parser.endOffset(&yyS[yypt-6])
+			endOffset := parser.endOffset(yyS.offset[yypt-6])
 			parser.setLastSelectFieldText(lastSelect, endOffset)
-			st := yyS[yypt-3].statement.(*ast.SelectStmt)
+			st := yyS.statement[yypt-3].(*ast.SelectStmt)
 			st.IsInBraces = true
-			st.IsAfterUnionDistinct = yyS[yypt-5].item.(bool)
-			endOffset = parser.endOffset(&yyS[yypt-2])
+			st.IsAfterUnionDistinct = yyS.item[yypt-5].(bool)
+			endOffset = parser.endOffset(yyS.offset[yypt-2])
 			parser.setLastSelectFieldText(st, endOffset)
 			union.SelectList.Selects = append(union.SelectList.Selects, st)
-			if yyS[yypt-1].item != nil {
-				union.OrderBy = yyS[yypt-1].item.(*ast.OrderByClause)
+			if yyS.item[yypt-1] != nil {
+				union.OrderBy = yyS.item[yypt-1].(*ast.OrderByClause)
 			}
-			if yyS[yypt-0].item != nil {
-				union.Limit = yyS[yypt-0].item.(*ast.Limit)
+			if yyS.item[yypt-0] != nil {
+				union.Limit = yyS.item[yypt-0].(*ast.Limit)
 			}
-			parser.yyVAL.statement = union
+			yyVAL.typ = statementType
+			yyVAL.statement = union
 		}
 	case 1161:
 		{
-			selectList := &ast.UnionSelectList{Selects: []*ast.SelectStmt{yyS[yypt-0].item.(*ast.SelectStmt)}}
-			parser.yyVAL.item = &ast.UnionStmt{
+			selectList := &ast.UnionSelectList{Selects: []*ast.SelectStmt{yyS.item[yypt-0].(*ast.SelectStmt)}}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.UnionStmt{
 				SelectList: selectList,
 			}
 		}
 	case 1162:
 		{
-			union := yyS[yypt-3].item.(*ast.UnionStmt)
-			st := yyS[yypt-0].item.(*ast.SelectStmt)
-			st.IsAfterUnionDistinct = yyS[yypt-1].item.(bool)
+			union := yyS.item[yypt-3].(*ast.UnionStmt)
+			st := yyS.item[yypt-0].(*ast.SelectStmt)
+			st.IsAfterUnionDistinct = yyS.item[yypt-1].(bool)
 			lastSelect := union.SelectList.Selects[len(union.SelectList.Selects)-1]
-			endOffset := parser.endOffset(&yyS[yypt-2])
+			endOffset := parser.endOffset(yyS.offset[yypt-2])
 			parser.setLastSelectFieldText(lastSelect, endOffset)
 			union.SelectList.Selects = append(union.SelectList.Selects, st)
-			parser.yyVAL.item = union
+			yyVAL.typ = itemType
+			yyVAL.item = union
 		}
 	case 1163:
 		{
-			parser.yyVAL.item = yyS[yypt-0].statement.(interface{})
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.statement[yypt-0].(interface{})
 		}
 	case 1164:
 		{
-			st := yyS[yypt-1].statement.(*ast.SelectStmt)
+			st := yyS.statement[yypt-1].(*ast.SelectStmt)
 			st.IsInBraces = true
-			endOffset := parser.endOffset(&yyS[yypt])
+			endOffset := parser.endOffset(yyS.offset[yypt])
 			parser.setLastSelectFieldText(st, endOffset)
-			parser.yyVAL.item = yyS[yypt-1].statement
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.statement[yypt-1]
 		}
 	case 1166:
 		{
-			parser.yyVAL.statement = &ast.ChangeStmt{
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.ChangeStmt{
 				NodeType: ast.PumpType,
-				State:    yyS[yypt-3].ident,
-				NodeID:   yyS[yypt-0].ident,
+				State:    yyS.ident[yypt-3],
+				NodeID:   yyS.ident[yypt-0],
 			}
 		}
 	case 1167:
 		{
-			parser.yyVAL.statement = &ast.ChangeStmt{
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.ChangeStmt{
 				NodeType: ast.DrainerType,
-				State:    yyS[yypt-3].ident,
-				NodeID:   yyS[yypt-0].ident,
+				State:    yyS.ident[yypt-3],
+				NodeID:   yyS.ident[yypt-0],
 			}
 		}
 	case 1168:
 		{
-			parser.yyVAL.statement = &ast.SetStmt{Variables: yyS[yypt-0].item.([]*ast.VariableAssignment)}
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.SetStmt{Variables: yyS.item[yypt-0].([]*ast.VariableAssignment)}
 		}
 	case 1169:
 		{
-			parser.yyVAL.statement = &ast.SetPwdStmt{Password: yyS[yypt-0].item.(string)}
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.SetPwdStmt{Password: yyS.item[yypt-0].(string)}
 		}
 	case 1170:
 		{
-			parser.yyVAL.statement = &ast.SetPwdStmt{User: yyS[yypt-2].item.(*auth.UserIdentity), Password: yyS[yypt-0].item.(string)}
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.SetPwdStmt{User: yyS.item[yypt-2].(*auth.UserIdentity), Password: yyS.item[yypt-0].(string)}
 		}
 	case 1171:
 		{
-			vars := yyS[yypt-0].item.([]*ast.VariableAssignment)
+			vars := yyS.item[yypt-0].([]*ast.VariableAssignment)
 			for _, v := range vars {
 				v.IsGlobal = true
 			}
-			parser.yyVAL.statement = &ast.SetStmt{Variables: vars}
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.SetStmt{Variables: vars}
 		}
 	case 1172:
 		{
-			parser.yyVAL.statement = &ast.SetStmt{Variables: yyS[yypt-0].item.([]*ast.VariableAssignment)}
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.SetStmt{Variables: yyS.item[yypt-0].([]*ast.VariableAssignment)}
 		}
 	case 1173:
 		{
-			assigns := yyS[yypt-0].item.([]*ast.VariableAssignment)
+			assigns := yyS.item[yypt-0].([]*ast.VariableAssignment)
 			for i := 0; i < len(assigns); i++ {
 				if assigns[i].Name == "tx_isolation" {
 					// A special session variable that make setting tx_isolation take effect one time.
 					assigns[i].Name = "tx_isolation_one_shot"
 				}
 			}
-			parser.yyVAL.statement = &ast.SetStmt{Variables: assigns}
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.SetStmt{Variables: assigns}
 		}
 	case 1174:
 		{
-			parser.yyVAL.statement = yyS[yypt-0].item.(*ast.SetRoleStmt)
+			yyVAL.typ = statementType
+			yyVAL.statement = yyS.item[yypt-0].(*ast.SetRoleStmt)
 		}
 	case 1175:
 		{
-			tmp := yyS[yypt-2].item.(*ast.SetRoleStmt)
-			parser.yyVAL.statement = &ast.SetDefaultRoleStmt{
+			tmp := yyS.item[yypt-2].(*ast.SetRoleStmt)
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.SetDefaultRoleStmt{
 				SetRoleOpt: tmp.SetRoleOpt,
 				RoleList:   tmp.RoleList,
-				UserList:   yyS[yypt-0].item.([]*auth.UserIdentity),
+				UserList:   yyS.item[yypt-0].([]*auth.UserIdentity),
 			}
 		}
 	case 1176:
 		{
-			parser.yyVAL.item = &ast.SetRoleStmt{SetRoleOpt: ast.SetRoleNone, RoleList: nil}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.SetRoleStmt{SetRoleOpt: ast.SetRoleNone, RoleList: nil}
 		}
 	case 1177:
 		{
-			parser.yyVAL.item = &ast.SetRoleStmt{SetRoleOpt: ast.SetRoleAll, RoleList: nil}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.SetRoleStmt{SetRoleOpt: ast.SetRoleAll, RoleList: nil}
 		}
 	case 1178:
 		{
-			parser.yyVAL.item = &ast.SetRoleStmt{SetRoleOpt: ast.SetRoleRegular, RoleList: yyS[yypt-0].item.([]*auth.RoleIdentity)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.SetRoleStmt{SetRoleOpt: ast.SetRoleRegular, RoleList: yyS.item[yypt-0].([]*auth.RoleIdentity)}
 		}
 	case 1179:
 		{
-			parser.yyVAL.item = &ast.SetRoleStmt{SetRoleOpt: ast.SetRoleAllExcept, RoleList: yyS[yypt-0].item.([]*auth.RoleIdentity)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.SetRoleStmt{SetRoleOpt: ast.SetRoleAllExcept, RoleList: yyS.item[yypt-0].([]*auth.RoleIdentity)}
 		}
 	case 1180:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0]
 		}
 	case 1181:
 		{
-			parser.yyVAL.item = &ast.SetRoleStmt{SetRoleOpt: ast.SetRoleDefault, RoleList: nil}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.SetRoleStmt{SetRoleOpt: ast.SetRoleDefault, RoleList: nil}
 		}
 	case 1182:
 		{
-			if yyS[yypt-0].item != nil {
-				parser.yyVAL.item = yyS[yypt-0].item
+			if yyS.item[yypt-0] != nil {
+				yyVAL.typ = itemType
+				yyVAL.item = yyS.item[yypt-0]
 			} else {
-				parser.yyVAL.item = []*ast.VariableAssignment{}
+				yyVAL.typ = itemType
+				yyVAL.item = []*ast.VariableAssignment{}
 			}
 		}
 	case 1183:
 		{
-			if yyS[yypt-0].item != nil {
-				varAssigns := yyS[yypt-0].item.([]*ast.VariableAssignment)
-				parser.yyVAL.item = append(yyS[yypt-2].item.([]*ast.VariableAssignment), varAssigns...)
+			if yyS.item[yypt-0] != nil {
+				varAssigns := yyS.item[yypt-0].([]*ast.VariableAssignment)
+				yyVAL.typ = itemType
+				yyVAL.item = append(yyS.item[yypt-2].([]*ast.VariableAssignment), varAssigns...)
 			} else {
-				parser.yyVAL.item = yyS[yypt-2].item
+				yyVAL.typ = itemType
+				yyVAL.item = yyS.item[yypt-2]
 			}
 		}
 	case 1184:
 		{
 			varAssigns := []*ast.VariableAssignment{}
-			expr := ast.NewValueExpr(yyS[yypt-0].ident)
+			expr := ast.NewValueExpr(yyS.ident[yypt-0])
 			varAssigns = append(varAssigns, &ast.VariableAssignment{Name: "tx_isolation", Value: expr, IsSystem: true})
-			parser.yyVAL.item = varAssigns
+			yyVAL.typ = itemType
+			yyVAL.item = varAssigns
 		}
 	case 1185:
 		{
 			varAssigns := []*ast.VariableAssignment{}
 			expr := ast.NewValueExpr("0")
 			varAssigns = append(varAssigns, &ast.VariableAssignment{Name: "tx_read_only", Value: expr, IsSystem: true})
-			parser.yyVAL.item = varAssigns
+			yyVAL.typ = itemType
+			yyVAL.item = varAssigns
 		}
 	case 1186:
 		{
 			varAssigns := []*ast.VariableAssignment{}
 			expr := ast.NewValueExpr("1")
 			varAssigns = append(varAssigns, &ast.VariableAssignment{Name: "tx_read_only", Value: expr, IsSystem: true})
-			parser.yyVAL.item = varAssigns
+			yyVAL.typ = itemType
+			yyVAL.item = varAssigns
 		}
 	case 1187:
 		{
-			parser.yyVAL.ident = ast.RepeatableRead
+			yyVAL.typ = identType
+			yyVAL.ident = ast.RepeatableRead
 		}
 	case 1188:
 		{
-			parser.yyVAL.ident = ast.ReadCommitted
+			yyVAL.typ = identType
+			yyVAL.ident = ast.ReadCommitted
 		}
 	case 1189:
 		{
-			parser.yyVAL.ident = ast.ReadUncommitted
+			yyVAL.typ = identType
+			yyVAL.ident = ast.ReadUncommitted
 		}
 	case 1190:
 		{
-			parser.yyVAL.ident = ast.Serializable
+			yyVAL.typ = identType
+			yyVAL.ident = ast.Serializable
 		}
 	case 1191:
 		{
-			parser.yyVAL.expr = ast.NewValueExpr("ON")
+			yyVAL.typ = exprType
+			yyVAL.expr = ast.NewValueExpr("ON")
 		}
 	case 1195:
 		{
-			parser.yyVAL.item = &ast.VariableAssignment{Name: yyS[yypt-2].ident, Value: yyS[yypt-0].expr, IsSystem: true}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.VariableAssignment{Name: yyS.ident[yypt-2], Value: yyS.expr[yypt-0], IsSystem: true}
 		}
 	case 1196:
 		{
-			parser.yyVAL.item = &ast.VariableAssignment{Name: yyS[yypt-2].ident, Value: yyS[yypt-0].expr, IsGlobal: true, IsSystem: true}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.VariableAssignment{Name: yyS.ident[yypt-2], Value: yyS.expr[yypt-0], IsGlobal: true, IsSystem: true}
 		}
 	case 1197:
 		{
-			parser.yyVAL.item = &ast.VariableAssignment{Name: yyS[yypt-2].ident, Value: yyS[yypt-0].expr, IsSystem: true}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.VariableAssignment{Name: yyS.ident[yypt-2], Value: yyS.expr[yypt-0], IsSystem: true}
 		}
 	case 1198:
 		{
-			parser.yyVAL.item = &ast.VariableAssignment{Name: yyS[yypt-2].ident, Value: yyS[yypt-0].expr, IsSystem: true}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.VariableAssignment{Name: yyS.ident[yypt-2], Value: yyS.expr[yypt-0], IsSystem: true}
 		}
 	case 1199:
 		{
-			v := strings.ToLower(yyS[yypt-2].ident)
+			v := strings.ToLower(yyS.ident[yypt-2])
 			var isGlobal bool
 			if strings.HasPrefix(v, "@@global.") {
 				isGlobal = true
@@ -12614,83 +13422,95 @@ yynewstate:
 			} else if strings.HasPrefix(v, "@@") {
 				v = strings.TrimPrefix(v, "@@")
 			}
-			parser.yyVAL.item = &ast.VariableAssignment{Name: v, Value: yyS[yypt-0].expr, IsGlobal: isGlobal, IsSystem: true}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.VariableAssignment{Name: v, Value: yyS.expr[yypt-0], IsGlobal: isGlobal, IsSystem: true}
 		}
 	case 1200:
 		{
-			v := yyS[yypt-2].ident
+			v := yyS.ident[yypt-2]
 			v = strings.TrimPrefix(v, "@")
-			parser.yyVAL.item = &ast.VariableAssignment{Name: v, Value: yyS[yypt-0].expr}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.VariableAssignment{Name: v, Value: yyS.expr[yypt-0]}
 		}
 	case 1201:
 		{
-			parser.yyVAL.item = &ast.VariableAssignment{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.VariableAssignment{
 				Name:  ast.SetNames,
-				Value: ast.NewValueExpr(yyS[yypt-0].item.(string)),
+				Value: ast.NewValueExpr(yyS.item[yypt-0].(string)),
 			}
 		}
 	case 1202:
 		{
-			parser.yyVAL.item = &ast.VariableAssignment{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.VariableAssignment{
 				Name:  ast.SetNames,
-				Value: ast.NewValueExpr(yyS[yypt-2].item.(string)),
+				Value: ast.NewValueExpr(yyS.item[yypt-2].(string)),
 			}
 		}
 	case 1203:
 		{
-			parser.yyVAL.item = &ast.VariableAssignment{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.VariableAssignment{
 				Name:        ast.SetNames,
-				Value:       ast.NewValueExpr(yyS[yypt-2].item.(string)),
-				ExtendValue: ast.NewValueExpr(yyS[yypt-0].item.(string)),
+				Value:       ast.NewValueExpr(yyS.item[yypt-2].(string)),
+				ExtendValue: ast.NewValueExpr(yyS.item[yypt-0].(string)),
 			}
 		}
 	case 1204:
 		{
-			parser.yyVAL.item = &ast.VariableAssignment{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.VariableAssignment{
 				Name:  ast.SetNames,
-				Value: ast.NewValueExpr(yyS[yypt-0].item.(string)),
+				Value: ast.NewValueExpr(yyS.item[yypt-0].(string)),
 			}
 		}
 	case 1205:
 		{
 			// Validate input charset name to keep the same behavior as parser of MySQL.
-			name, _, err := charset.GetCharsetInfo(yyS[yypt-0].item.(string))
+			name, _, err := charset.GetCharsetInfo(yyS.item[yypt-0].(string))
 			if err != nil {
-				yylex.AppendError(ErrUnknownCharacterSet.GenWithStackByArgs(yyS[yypt-0].item))
+				yylex.AppendError(ErrUnknownCharacterSet.GenWithStackByArgs(yyS.item[yypt-0]))
 				return 1
 			}
 			// Use charset name returned from charset.GetCharsetInfo(),
 			// to keep lower case of input for generated column restore.
-			parser.yyVAL.item = name
+			yyVAL.typ = itemType
+			yyVAL.item = name
 		}
 	case 1206:
 		{
-			parser.yyVAL.item = charset.CharsetBin
+			yyVAL.typ = itemType
+			yyVAL.item = charset.CharsetBin
 		}
 	case 1207:
 		{
-			info, err := charset.GetCollationByName(yyS[yypt-0].item.(string))
+			info, err := charset.GetCollationByName(yyS.item[yypt-0].(string))
 			if err != nil {
 				yylex.AppendError(err)
 				return 1
 			}
-			parser.yyVAL.item = info.Name
+			yyVAL.typ = itemType
+			yyVAL.item = info.Name
 		}
 	case 1208:
 		{
-			parser.yyVAL.item = []*ast.VariableAssignment{}
+			yyVAL.typ = itemType
+			yyVAL.item = []*ast.VariableAssignment{}
 		}
 	case 1209:
 		{
-			parser.yyVAL.item = []*ast.VariableAssignment{yyS[yypt-0].item.(*ast.VariableAssignment)}
+			yyVAL.typ = itemType
+			yyVAL.item = []*ast.VariableAssignment{yyS.item[yypt-0].(*ast.VariableAssignment)}
 		}
 	case 1210:
 		{
-			parser.yyVAL.item = append(yyS[yypt-2].item.([]*ast.VariableAssignment), yyS[yypt-0].item.(*ast.VariableAssignment))
+			yyVAL.typ = itemType
+			yyVAL.item = append(yyS.item[yypt-2].([]*ast.VariableAssignment), yyS.item[yypt-0].(*ast.VariableAssignment))
 		}
 	case 1213:
 		{
-			v := strings.ToLower(yyS[yypt-0].ident)
+			v := strings.ToLower(yyS.ident[yypt-0])
 			var isGlobal bool
 			explicitScope := true
 			if strings.HasPrefix(v, "@@global.") {
@@ -12703,341 +13523,398 @@ yynewstate:
 			} else if strings.HasPrefix(v, "@@") {
 				v, explicitScope = strings.TrimPrefix(v, "@@"), false
 			}
-			parser.yyVAL.expr = &ast.VariableExpr{Name: v, IsGlobal: isGlobal, IsSystem: true, ExplicitScope: explicitScope}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.VariableExpr{Name: v, IsGlobal: isGlobal, IsSystem: true, ExplicitScope: explicitScope}
 		}
 	case 1214:
 		{
-			v := yyS[yypt-0].ident
+			v := yyS.ident[yypt-0]
 			v = strings.TrimPrefix(v, "@")
-			parser.yyVAL.expr = &ast.VariableExpr{Name: v, IsGlobal: false, IsSystem: false}
+			yyVAL.typ = exprType
+			yyVAL.expr = &ast.VariableExpr{Name: v, IsGlobal: false, IsSystem: false}
 		}
 	case 1215:
 		{
-			parser.yyVAL.item = &auth.UserIdentity{Username: yyS[yypt-0].item.(string), Hostname: "%"}
+			yyVAL.typ = itemType
+			yyVAL.item = &auth.UserIdentity{Username: yyS.item[yypt-0].(string), Hostname: "%"}
 		}
 	case 1216:
 		{
-			parser.yyVAL.item = &auth.UserIdentity{Username: yyS[yypt-2].item.(string), Hostname: yyS[yypt-0].item.(string)}
+			yyVAL.typ = itemType
+			yyVAL.item = &auth.UserIdentity{Username: yyS.item[yypt-2].(string), Hostname: yyS.item[yypt-0].(string)}
 		}
 	case 1217:
 		{
-			parser.yyVAL.item = &auth.UserIdentity{Username: yyS[yypt-1].item.(string), Hostname: strings.TrimPrefix(yyS[yypt-0].ident, "@")}
+			yyVAL.typ = itemType
+			yyVAL.item = &auth.UserIdentity{Username: yyS.item[yypt-1].(string), Hostname: strings.TrimPrefix(yyS.ident[yypt-0], "@")}
 		}
 	case 1218:
 		{
-			parser.yyVAL.item = &auth.UserIdentity{CurrentUser: true}
+			yyVAL.typ = itemType
+			yyVAL.item = &auth.UserIdentity{CurrentUser: true}
 		}
 	case 1219:
 		{
-			parser.yyVAL.item = []*auth.UserIdentity{yyS[yypt-0].item.(*auth.UserIdentity)}
+			yyVAL.typ = itemType
+			yyVAL.item = []*auth.UserIdentity{yyS.item[yypt-0].(*auth.UserIdentity)}
 		}
 	case 1220:
 		{
-			parser.yyVAL.item = append(yyS[yypt-2].item.([]*auth.UserIdentity), yyS[yypt-0].item.(*auth.UserIdentity))
+			yyVAL.typ = itemType
+			yyVAL.item = append(yyS.item[yypt-2].([]*auth.UserIdentity), yyS.item[yypt-0].(*auth.UserIdentity))
 		}
 	case 1221:
 		{
-			parser.yyVAL.item = yyS[yypt-0].ident
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.ident[yypt-0]
 		}
 	case 1222:
 		{
-			parser.yyVAL.item = yyS[yypt-1].item.(string)
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-1].(string)
 		}
 	case 1223:
 		{
-			parser.yyVAL.item = yyS[yypt-0].ident
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.ident[yypt-0]
 		}
 	case 1224:
 		{
-			parser.yyVAL.item = yyS[yypt-0].ident
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.ident[yypt-0]
 		}
 	case 1225:
 		{
-			parser.yyVAL.item = yyS[yypt-0].ident
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.ident[yypt-0]
 		}
 	case 1226:
 		{
-			parser.yyVAL.item = &auth.RoleIdentity{Username: yyS[yypt-0].item.(string), Hostname: "%"}
+			yyVAL.typ = itemType
+			yyVAL.item = &auth.RoleIdentity{Username: yyS.item[yypt-0].(string), Hostname: "%"}
 		}
 	case 1227:
 		{
-			parser.yyVAL.item = &auth.RoleIdentity{Username: yyS[yypt-2].item.(string), Hostname: yyS[yypt-0].item.(string)}
+			yyVAL.typ = itemType
+			yyVAL.item = &auth.RoleIdentity{Username: yyS.item[yypt-2].(string), Hostname: yyS.item[yypt-0].(string)}
 		}
 	case 1228:
 		{
-			parser.yyVAL.item = &auth.RoleIdentity{Username: yyS[yypt-1].item.(string), Hostname: strings.TrimPrefix(yyS[yypt-0].ident, "@")}
+			yyVAL.typ = itemType
+			yyVAL.item = &auth.RoleIdentity{Username: yyS.item[yypt-1].(string), Hostname: strings.TrimPrefix(yyS.ident[yypt-0], "@")}
 		}
 	case 1229:
 		{
-			parser.yyVAL.item = []*auth.RoleIdentity{yyS[yypt-0].item.(*auth.RoleIdentity)}
+			yyVAL.typ = itemType
+			yyVAL.item = []*auth.RoleIdentity{yyS.item[yypt-0].(*auth.RoleIdentity)}
 		}
 	case 1230:
 		{
-			parser.yyVAL.item = append(yyS[yypt-2].item.([]*auth.RoleIdentity), yyS[yypt-0].item.(*auth.RoleIdentity))
+			yyVAL.typ = itemType
+			yyVAL.item = append(yyS.item[yypt-2].([]*auth.RoleIdentity), yyS.item[yypt-0].(*auth.RoleIdentity))
 		}
 	case 1231:
 		{
-			parser.yyVAL.statement = &ast.AdminStmt{Tp: ast.AdminShowDDL}
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.AdminStmt{Tp: ast.AdminShowDDL}
 		}
 	case 1232:
 		{
-			parser.yyVAL.statement = &ast.AdminStmt{Tp: ast.AdminShowDDLJobs}
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.AdminStmt{Tp: ast.AdminShowDDLJobs}
 		}
 	case 1233:
 		{
-			parser.yyVAL.statement = &ast.AdminStmt{
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.AdminStmt{
 				Tp:        ast.AdminShowDDLJobs,
-				JobNumber: yyS[yypt-0].item.(int64),
+				JobNumber: yyS.item[yypt-0].(int64),
 			}
 		}
 	case 1234:
 		{
-			parser.yyVAL.statement = &ast.AdminStmt{
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.AdminStmt{
 				Tp:     ast.AdminShowNextRowID,
-				Tables: []*ast.TableName{yyS[yypt-1].item.(*ast.TableName)},
+				Tables: []*ast.TableName{yyS.item[yypt-1].(*ast.TableName)},
 			}
 		}
 	case 1235:
 		{
-			parser.yyVAL.statement = &ast.AdminStmt{
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.AdminStmt{
 				Tp:     ast.AdminCheckTable,
-				Tables: yyS[yypt-0].item.([]*ast.TableName),
+				Tables: yyS.item[yypt-0].([]*ast.TableName),
 			}
 		}
 	case 1236:
 		{
-			parser.yyVAL.statement = &ast.AdminStmt{
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.AdminStmt{
 				Tp:     ast.AdminCheckIndex,
-				Tables: []*ast.TableName{yyS[yypt-1].item.(*ast.TableName)},
-				Index:  string(yyS[yypt-0].ident),
+				Tables: []*ast.TableName{yyS.item[yypt-1].(*ast.TableName)},
+				Index:  string(yyS.ident[yypt-0]),
 			}
 		}
 	case 1237:
 		{
-			parser.yyVAL.statement = &ast.AdminStmt{
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.AdminStmt{
 				Tp:     ast.AdminRecoverIndex,
-				Tables: []*ast.TableName{yyS[yypt-1].item.(*ast.TableName)},
-				Index:  string(yyS[yypt-0].ident),
+				Tables: []*ast.TableName{yyS.item[yypt-1].(*ast.TableName)},
+				Index:  string(yyS.ident[yypt-0]),
 			}
 		}
 	case 1238:
 		{
-			parser.yyVAL.statement = &ast.AdminStmt{
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.AdminStmt{
 				Tp:     ast.AdminCleanupIndex,
-				Tables: []*ast.TableName{yyS[yypt-1].item.(*ast.TableName)},
-				Index:  string(yyS[yypt-0].ident),
+				Tables: []*ast.TableName{yyS.item[yypt-1].(*ast.TableName)},
+				Index:  string(yyS.ident[yypt-0]),
 			}
 		}
 	case 1239:
 		{
-			parser.yyVAL.statement = &ast.AdminStmt{
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.AdminStmt{
 				Tp:           ast.AdminCheckIndexRange,
-				Tables:       []*ast.TableName{yyS[yypt-2].item.(*ast.TableName)},
-				Index:        string(yyS[yypt-1].ident),
-				HandleRanges: yyS[yypt-0].item.([]ast.HandleRange),
+				Tables:       []*ast.TableName{yyS.item[yypt-2].(*ast.TableName)},
+				Index:        string(yyS.ident[yypt-1]),
+				HandleRanges: yyS.item[yypt-0].([]ast.HandleRange),
 			}
 		}
 	case 1240:
 		{
-			parser.yyVAL.statement = &ast.AdminStmt{
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.AdminStmt{
 				Tp:     ast.AdminChecksumTable,
-				Tables: yyS[yypt-0].item.([]*ast.TableName),
+				Tables: yyS.item[yypt-0].([]*ast.TableName),
 			}
 		}
 	case 1241:
 		{
-			parser.yyVAL.statement = &ast.AdminStmt{
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.AdminStmt{
 				Tp:     ast.AdminCancelDDLJobs,
-				JobIDs: yyS[yypt-0].item.([]int64),
+				JobIDs: yyS.item[yypt-0].([]int64),
 			}
 		}
 	case 1242:
 		{
-			parser.yyVAL.statement = &ast.AdminStmt{
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.AdminStmt{
 				Tp:     ast.AdminShowDDLJobQueries,
-				JobIDs: yyS[yypt-0].item.([]int64),
+				JobIDs: yyS.item[yypt-0].([]int64),
 			}
 		}
 	case 1243:
 		{
-			parser.yyVAL.statement = &ast.AdminStmt{
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.AdminStmt{
 				Tp:       ast.AdminShowSlow,
-				ShowSlow: yyS[yypt-0].item.(*ast.ShowSlow),
+				ShowSlow: yyS.item[yypt-0].(*ast.ShowSlow),
 			}
 		}
 	case 1244:
 		{
-			parser.yyVAL.statement = &ast.AdminStmt{
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.AdminStmt{
 				Tp: ast.AdminReloadExprPushdownBlacklist,
 			}
 		}
 	case 1245:
 		{
-			parser.yyVAL.statement = &ast.AdminStmt{
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.AdminStmt{
 				Tp: ast.AdminReloadOptRuleBlacklist,
 			}
 		}
 	case 1246:
 		{
-			parser.yyVAL.statement = &ast.AdminStmt{
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.AdminStmt{
 				Tp:      ast.AdminPluginEnable,
-				Plugins: yyS[yypt-0].item.([]string),
+				Plugins: yyS.item[yypt-0].([]string),
 			}
 		}
 	case 1247:
 		{
-			parser.yyVAL.statement = &ast.AdminStmt{
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.AdminStmt{
 				Tp:      ast.AdminPluginDisable,
-				Plugins: yyS[yypt-0].item.([]string),
+				Plugins: yyS.item[yypt-0].([]string),
 			}
 		}
 	case 1248:
 		{
-			parser.yyVAL.statement = &ast.CleanupTableLockStmt{
-				Tables: yyS[yypt-0].item.([]*ast.TableName),
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.CleanupTableLockStmt{
+				Tables: yyS.item[yypt-0].([]*ast.TableName),
 			}
 		}
 	case 1249:
 		{
-			parser.yyVAL.item = &ast.ShowSlow{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ShowSlow{
 				Tp:    ast.ShowSlowRecent,
-				Count: getUint64FromNUM(yyS[yypt-0].item),
+				Count: getUint64FromNUM(yyS.item[yypt-0]),
 			}
 		}
 	case 1250:
 		{
-			parser.yyVAL.item = &ast.ShowSlow{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ShowSlow{
 				Tp:    ast.ShowSlowTop,
 				Kind:  ast.ShowSlowKindDefault,
-				Count: getUint64FromNUM(yyS[yypt-0].item),
+				Count: getUint64FromNUM(yyS.item[yypt-0]),
 			}
 		}
 	case 1251:
 		{
-			parser.yyVAL.item = &ast.ShowSlow{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ShowSlow{
 				Tp:    ast.ShowSlowTop,
 				Kind:  ast.ShowSlowKindInternal,
-				Count: getUint64FromNUM(yyS[yypt-0].item),
+				Count: getUint64FromNUM(yyS.item[yypt-0]),
 			}
 		}
 	case 1252:
 		{
-			parser.yyVAL.item = &ast.ShowSlow{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ShowSlow{
 				Tp:    ast.ShowSlowTop,
 				Kind:  ast.ShowSlowKindAll,
-				Count: getUint64FromNUM(yyS[yypt-0].item),
+				Count: getUint64FromNUM(yyS.item[yypt-0]),
 			}
 		}
 	case 1253:
 		{
-			parser.yyVAL.item = []ast.HandleRange{yyS[yypt-0].item.(ast.HandleRange)}
+			yyVAL.typ = itemType
+			yyVAL.item = []ast.HandleRange{yyS.item[yypt-0].(ast.HandleRange)}
 		}
 	case 1254:
 		{
-			parser.yyVAL.item = append(yyS[yypt-2].item.([]ast.HandleRange), yyS[yypt-0].item.(ast.HandleRange))
+			yyVAL.typ = itemType
+			yyVAL.item = append(yyS.item[yypt-2].([]ast.HandleRange), yyS.item[yypt-0].(ast.HandleRange))
 		}
 	case 1255:
 		{
-			parser.yyVAL.item = ast.HandleRange{Begin: yyS[yypt-3].item.(int64), End: yyS[yypt-1].item.(int64)}
+			yyVAL.typ = itemType
+			yyVAL.item = ast.HandleRange{Begin: yyS.item[yypt-3].(int64), End: yyS.item[yypt-1].(int64)}
 		}
 	case 1256:
 		{
-			parser.yyVAL.item = []int64{yyS[yypt-0].item.(int64)}
+			yyVAL.typ = itemType
+			yyVAL.item = []int64{yyS.item[yypt-0].(int64)}
 		}
 	case 1257:
 		{
-			parser.yyVAL.item = append(yyS[yypt-2].item.([]int64), yyS[yypt-0].item.(int64))
+			yyVAL.typ = itemType
+			yyVAL.item = append(yyS.item[yypt-2].([]int64), yyS.item[yypt-0].(int64))
 		}
 	case 1258:
 		{
-			stmt := yyS[yypt-1].item.(*ast.ShowStmt)
-			if yyS[yypt-0].item != nil {
-				if x, ok := yyS[yypt-0].item.(*ast.PatternLikeExpr); ok && x.Expr == nil {
+			stmt := yyS.item[yypt-1].(*ast.ShowStmt)
+			if yyS.item[yypt-0] != nil {
+				if x, ok := yyS.item[yypt-0].(*ast.PatternLikeExpr); ok && x.Expr == nil {
 					stmt.Pattern = x
 				} else {
-					stmt.Where = yyS[yypt-0].item.(ast.ExprNode)
+					stmt.Where = yyS.item[yypt-0].(ast.ExprNode)
 				}
 			}
-			parser.yyVAL.statement = stmt
+			yyVAL.typ = statementType
+			yyVAL.statement = stmt
 		}
 	case 1259:
 		{
-			parser.yyVAL.statement = &ast.ShowStmt{
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.ShowStmt{
 				Tp:    ast.ShowCreateTable,
-				Table: yyS[yypt-0].item.(*ast.TableName),
+				Table: yyS.item[yypt-0].(*ast.TableName),
 			}
 		}
 	case 1260:
 		{
-			parser.yyVAL.statement = &ast.ShowStmt{
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.ShowStmt{
 				Tp:    ast.ShowCreateView,
-				Table: yyS[yypt-0].item.(*ast.TableName),
+				Table: yyS.item[yypt-0].(*ast.TableName),
 			}
 		}
 	case 1261:
 		{
-			parser.yyVAL.statement = &ast.ShowStmt{
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.ShowStmt{
 				Tp:          ast.ShowCreateDatabase,
-				IfNotExists: yyS[yypt-1].item.(bool),
-				DBName:      yyS[yypt-0].item.(string),
+				IfNotExists: yyS.item[yypt-1].(bool),
+				DBName:      yyS.item[yypt-0].(string),
 			}
 		}
 	case 1262:
 		{
 			// See https://dev.mysql.com/doc/refman/5.7/en/show-create-user.html
-			parser.yyVAL.statement = &ast.ShowStmt{
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.ShowStmt{
 				Tp:   ast.ShowCreateUser,
-				User: yyS[yypt-0].item.(*auth.UserIdentity),
+				User: yyS.item[yypt-0].(*auth.UserIdentity),
 			}
 		}
 	case 1263:
 		{
-			parser.yyVAL.statement = &ast.ShowStmt{
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.ShowStmt{
 				Tp:    ast.ShowRegions,
-				Table: yyS[yypt-1].item.(*ast.TableName),
+				Table: yyS.item[yypt-1].(*ast.TableName),
 			}
 		}
 	case 1264:
 		{
-			parser.yyVAL.statement = &ast.ShowStmt{
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.ShowStmt{
 				Tp:        ast.ShowRegions,
-				Table:     yyS[yypt-3].item.(*ast.TableName),
-				IndexName: model.NewCIStr(yyS[yypt-1].ident),
+				Table:     yyS.item[yypt-3].(*ast.TableName),
+				IndexName: model.NewCIStr(yyS.ident[yypt-1]),
 			}
 		}
 	case 1265:
 		{
 			// See https://dev.mysql.com/doc/refman/5.7/en/show-grants.html
-			parser.yyVAL.statement = &ast.ShowStmt{Tp: ast.ShowGrants}
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.ShowStmt{Tp: ast.ShowGrants}
 		}
 	case 1266:
 		{
 			// See https://dev.mysql.com/doc/refman/5.7/en/show-grants.html
-			if yyS[yypt-0].item != nil {
-				parser.yyVAL.statement = &ast.ShowStmt{
+			if yyS.item[yypt-0] != nil {
+				yyVAL.typ = statementType
+				yyVAL.statement = &ast.ShowStmt{
 					Tp:    ast.ShowGrants,
-					User:  yyS[yypt-1].item.(*auth.UserIdentity),
-					Roles: yyS[yypt-0].item.([]*auth.RoleIdentity),
+					User:  yyS.item[yypt-1].(*auth.UserIdentity),
+					Roles: yyS.item[yypt-0].([]*auth.RoleIdentity),
 				}
 			} else {
-				parser.yyVAL.statement = &ast.ShowStmt{
+				yyVAL.typ = statementType
+				yyVAL.statement = &ast.ShowStmt{
 					Tp:    ast.ShowGrants,
-					User:  yyS[yypt-1].item.(*auth.UserIdentity),
+					User:  yyS.item[yypt-1].(*auth.UserIdentity),
 					Roles: nil,
 				}
 			}
 		}
 	case 1267:
 		{
-			parser.yyVAL.statement = &ast.ShowStmt{
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.ShowStmt{
 				Tp: ast.ShowMasterStatus,
 			}
 		}
 	case 1268:
 		{
-			parser.yyVAL.statement = &ast.ShowStmt{
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.ShowStmt{
 				Tp:   ast.ShowProcessList,
-				Full: yyS[yypt-1].item.(bool),
+				Full: yyS.item[yypt-1].(bool),
 			}
 		}
 	case 1269:
@@ -13045,60 +13922,65 @@ yynewstate:
 			stmt := &ast.ShowStmt{
 				Tp: ast.ShowStatsMeta,
 			}
-			if yyS[yypt-0].item != nil {
-				if x, ok := yyS[yypt-0].item.(*ast.PatternLikeExpr); ok && x.Expr == nil {
+			if yyS.item[yypt-0] != nil {
+				if x, ok := yyS.item[yypt-0].(*ast.PatternLikeExpr); ok && x.Expr == nil {
 					stmt.Pattern = x
 				} else {
-					stmt.Where = yyS[yypt-0].item.(ast.ExprNode)
+					stmt.Where = yyS.item[yypt-0].(ast.ExprNode)
 				}
 			}
-			parser.yyVAL.statement = stmt
+			yyVAL.typ = statementType
+			yyVAL.statement = stmt
 		}
 	case 1270:
 		{
 			stmt := &ast.ShowStmt{
 				Tp: ast.ShowStatsHistograms,
 			}
-			if yyS[yypt-0].item != nil {
-				if x, ok := yyS[yypt-0].item.(*ast.PatternLikeExpr); ok && x.Expr == nil {
+			if yyS.item[yypt-0] != nil {
+				if x, ok := yyS.item[yypt-0].(*ast.PatternLikeExpr); ok && x.Expr == nil {
 					stmt.Pattern = x
 				} else {
-					stmt.Where = yyS[yypt-0].item.(ast.ExprNode)
+					stmt.Where = yyS.item[yypt-0].(ast.ExprNode)
 				}
 			}
-			parser.yyVAL.statement = stmt
+			yyVAL.typ = statementType
+			yyVAL.statement = stmt
 		}
 	case 1271:
 		{
 			stmt := &ast.ShowStmt{
 				Tp: ast.ShowStatsBuckets,
 			}
-			if yyS[yypt-0].item != nil {
-				if x, ok := yyS[yypt-0].item.(*ast.PatternLikeExpr); ok && x.Expr == nil {
+			if yyS.item[yypt-0] != nil {
+				if x, ok := yyS.item[yypt-0].(*ast.PatternLikeExpr); ok && x.Expr == nil {
 					stmt.Pattern = x
 				} else {
-					stmt.Where = yyS[yypt-0].item.(ast.ExprNode)
+					stmt.Where = yyS.item[yypt-0].(ast.ExprNode)
 				}
 			}
-			parser.yyVAL.statement = stmt
+			yyVAL.typ = statementType
+			yyVAL.statement = stmt
 		}
 	case 1272:
 		{
 			stmt := &ast.ShowStmt{
 				Tp: ast.ShowStatsHealthy,
 			}
-			if yyS[yypt-0].item != nil {
-				if x, ok := yyS[yypt-0].item.(*ast.PatternLikeExpr); ok && x.Expr == nil {
+			if yyS.item[yypt-0] != nil {
+				if x, ok := yyS.item[yypt-0].(*ast.PatternLikeExpr); ok && x.Expr == nil {
 					stmt.Pattern = x
 				} else {
-					stmt.Where = yyS[yypt-0].item.(ast.ExprNode)
+					stmt.Where = yyS.item[yypt-0].(ast.ExprNode)
 				}
 			}
-			parser.yyVAL.statement = stmt
+			yyVAL.typ = statementType
+			yyVAL.statement = stmt
 		}
 	case 1273:
 		{
-			parser.yyVAL.statement = &ast.ShowStmt{
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.ShowStmt{
 				Tp: ast.ShowProfiles,
 			}
 		}
@@ -13107,20 +13989,22 @@ yynewstate:
 			v := &ast.ShowStmt{
 				Tp: ast.ShowProfile,
 			}
-			if yyS[yypt-2].item != nil {
-				v.ShowProfileTypes = yyS[yypt-2].item.([]int)
+			if yyS.item[yypt-2] != nil {
+				v.ShowProfileTypes = yyS.item[yypt-2].([]int)
 			}
-			if yyS[yypt-1].item != nil {
-				v.ShowProfileArgs = yyS[yypt-1].item.(*int64)
+			if yyS.item[yypt-1] != nil {
+				v.ShowProfileArgs = yyS.item[yypt-1].(*int64)
 			}
-			if yyS[yypt-0].item != nil {
-				v.ShowProfileLimit = yyS[yypt-0].item.(*ast.Limit)
+			if yyS.item[yypt-0] != nil {
+				v.ShowProfileLimit = yyS.item[yypt-0].(*ast.Limit)
 			}
-			parser.yyVAL.statement = v
+			yyVAL.typ = statementType
+			yyVAL.statement = v
 		}
 	case 1275:
 		{
-			parser.yyVAL.statement = &ast.ShowStmt{
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.ShowStmt{
 				Tp: ast.ShowPrivileges,
 			}
 		}
@@ -13129,211 +14013,249 @@ yynewstate:
 			stmt := &ast.ShowStmt{
 				Tp: ast.ShowAnalyzeStatus,
 			}
-			if yyS[yypt-0].item != nil {
-				if x, ok := yyS[yypt-0].item.(*ast.PatternLikeExpr); ok && x.Expr == nil {
+			if yyS.item[yypt-0] != nil {
+				if x, ok := yyS.item[yypt-0].(*ast.PatternLikeExpr); ok && x.Expr == nil {
 					stmt.Pattern = x
 				} else {
-					stmt.Where = yyS[yypt-0].item.(ast.ExprNode)
+					stmt.Where = yyS.item[yypt-0].(ast.ExprNode)
 				}
 			}
-			parser.yyVAL.statement = stmt
+			yyVAL.typ = statementType
+			yyVAL.statement = stmt
 		}
 	case 1277:
 		{
-			parser.yyVAL.item = nil
+			yyVAL.typ = itemType
+			yyVAL.item = nil
 		}
 	case 1278:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0]
 		}
 	case 1279:
 		{
-			parser.yyVAL.item = []int{yyS[yypt-0].item.(int)}
+			yyVAL.typ = itemType
+			yyVAL.item = []int{yyS.item[yypt-0].(int)}
 		}
 	case 1280:
 		{
-			l := yyS[yypt-2].item.([]int)
-			l = append(l, yyS[yypt-0].item.(int))
-			parser.yyVAL.item = l
+			l := yyS.item[yypt-2].([]int)
+			l = append(l, yyS.item[yypt-0].(int))
+			yyVAL.typ = itemType
+			yyVAL.item = l
 		}
 	case 1281:
 		{
-			parser.yyVAL.item = ast.ProfileTypeCPU
+			yyVAL.typ = itemType
+			yyVAL.item = ast.ProfileTypeCPU
 		}
 	case 1282:
 		{
-			parser.yyVAL.item = ast.ProfileTypeMemory
+			yyVAL.typ = itemType
+			yyVAL.item = ast.ProfileTypeMemory
 		}
 	case 1283:
 		{
-			parser.yyVAL.item = ast.ProfileTypeBlockIo
+			yyVAL.typ = itemType
+			yyVAL.item = ast.ProfileTypeBlockIo
 		}
 	case 1284:
 		{
-			parser.yyVAL.item = ast.ProfileTypeContextSwitch
+			yyVAL.typ = itemType
+			yyVAL.item = ast.ProfileTypeContextSwitch
 		}
 	case 1285:
 		{
-			parser.yyVAL.item = ast.ProfileTypePageFaults
+			yyVAL.typ = itemType
+			yyVAL.item = ast.ProfileTypePageFaults
 		}
 	case 1286:
 		{
-			parser.yyVAL.item = ast.ProfileTypeIpc
+			yyVAL.typ = itemType
+			yyVAL.item = ast.ProfileTypeIpc
 		}
 	case 1287:
 		{
-			parser.yyVAL.item = ast.ProfileTypeSwaps
+			yyVAL.typ = itemType
+			yyVAL.item = ast.ProfileTypeSwaps
 		}
 	case 1288:
 		{
-			parser.yyVAL.item = ast.ProfileTypeSource
+			yyVAL.typ = itemType
+			yyVAL.item = ast.ProfileTypeSource
 		}
 	case 1289:
 		{
-			parser.yyVAL.item = ast.ProfileTypeAll
+			yyVAL.typ = itemType
+			yyVAL.item = ast.ProfileTypeAll
 		}
 	case 1290:
 		{
-			parser.yyVAL.item = nil
+			yyVAL.typ = itemType
+			yyVAL.item = nil
 		}
 	case 1291:
 		{
-			v := yyS[yypt-0].item.(int64)
-			parser.yyVAL.item = &v
+			v := yyS.item[yypt-0].(int64)
+			yyVAL.typ = itemType
+			yyVAL.item = &v
 		}
 	case 1292:
 		{
-			parser.yyVAL.item = nil
+			yyVAL.typ = itemType
+			yyVAL.item = nil
 		}
 	case 1293:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item.([]*auth.RoleIdentity)
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0].([]*auth.RoleIdentity)
 		}
 	case 1299:
 		{
-			parser.yyVAL.item = &ast.ShowStmt{Tp: ast.ShowEngines}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ShowStmt{Tp: ast.ShowEngines}
 		}
 	case 1300:
 		{
-			parser.yyVAL.item = &ast.ShowStmt{Tp: ast.ShowDatabases}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ShowStmt{Tp: ast.ShowDatabases}
 		}
 	case 1301:
 		{
-			parser.yyVAL.item = &ast.ShowStmt{Tp: ast.ShowCharset}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ShowStmt{Tp: ast.ShowCharset}
 		}
 	case 1302:
 		{
-			parser.yyVAL.item = &ast.ShowStmt{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ShowStmt{
 				Tp:     ast.ShowTables,
-				DBName: yyS[yypt-0].item.(string),
-				Full:   yyS[yypt-2].item.(bool),
+				DBName: yyS.item[yypt-0].(string),
+				Full:   yyS.item[yypt-2].(bool),
 			}
 		}
 	case 1303:
 		{
-			parser.yyVAL.item = &ast.ShowStmt{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ShowStmt{
 				Tp:     ast.ShowOpenTables,
-				DBName: yyS[yypt-0].item.(string),
+				DBName: yyS.item[yypt-0].(string),
 			}
 		}
 	case 1304:
 		{
-			parser.yyVAL.item = &ast.ShowStmt{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ShowStmt{
 				Tp:     ast.ShowTableStatus,
-				DBName: yyS[yypt-0].item.(string),
+				DBName: yyS.item[yypt-0].(string),
 			}
 		}
 	case 1305:
 		{
-			parser.yyVAL.item = &ast.ShowStmt{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ShowStmt{
 				Tp:    ast.ShowIndex,
-				Table: yyS[yypt-0].item.(*ast.TableName),
+				Table: yyS.item[yypt-0].(*ast.TableName),
 			}
 		}
 	case 1306:
 		{
 			show := &ast.ShowStmt{
 				Tp:    ast.ShowIndex,
-				Table: &ast.TableName{Name: model.NewCIStr(yyS[yypt-2].ident), Schema: model.NewCIStr(yyS[yypt-0].ident)},
+				Table: &ast.TableName{Name: model.NewCIStr(yyS.ident[yypt-2]), Schema: model.NewCIStr(yyS.ident[yypt-0])},
 			}
-			parser.yyVAL.item = show
+			yyVAL.typ = itemType
+			yyVAL.item = show
 		}
 	case 1307:
 		{
-			parser.yyVAL.item = &ast.ShowStmt{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ShowStmt{
 				Tp:     ast.ShowColumns,
-				Table:  yyS[yypt-1].item.(*ast.TableName),
-				DBName: yyS[yypt-0].item.(string),
-				Full:   yyS[yypt-3].item.(bool),
+				Table:  yyS.item[yypt-1].(*ast.TableName),
+				DBName: yyS.item[yypt-0].(string),
+				Full:   yyS.item[yypt-3].(bool),
 			}
 		}
 	case 1308:
 		{
 			// SHOW FIELDS is a synonym for SHOW COLUMNS.
-			parser.yyVAL.item = &ast.ShowStmt{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ShowStmt{
 				Tp:     ast.ShowColumns,
-				Table:  yyS[yypt-1].item.(*ast.TableName),
-				DBName: yyS[yypt-0].item.(string),
-				Full:   yyS[yypt-3].item.(bool),
+				Table:  yyS.item[yypt-1].(*ast.TableName),
+				DBName: yyS.item[yypt-0].(string),
+				Full:   yyS.item[yypt-3].(bool),
 			}
 		}
 	case 1309:
 		{
-			parser.yyVAL.item = &ast.ShowStmt{Tp: ast.ShowWarnings}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ShowStmt{Tp: ast.ShowWarnings}
 		}
 	case 1310:
 		{
-			parser.yyVAL.item = &ast.ShowStmt{Tp: ast.ShowErrors}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ShowStmt{Tp: ast.ShowErrors}
 		}
 	case 1311:
 		{
-			parser.yyVAL.item = &ast.ShowStmt{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ShowStmt{
 				Tp:          ast.ShowVariables,
-				GlobalScope: yyS[yypt-1].item.(bool),
+				GlobalScope: yyS.item[yypt-1].(bool),
 			}
 		}
 	case 1312:
 		{
-			parser.yyVAL.item = &ast.ShowStmt{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ShowStmt{
 				Tp:          ast.ShowStatus,
-				GlobalScope: yyS[yypt-1].item.(bool),
+				GlobalScope: yyS.item[yypt-1].(bool),
 			}
 		}
 	case 1313:
 		{
-			parser.yyVAL.item = &ast.ShowStmt{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ShowStmt{
 				Tp:          ast.ShowBindings,
-				GlobalScope: yyS[yypt-1].item.(bool),
+				GlobalScope: yyS.item[yypt-1].(bool),
 			}
 		}
 	case 1314:
 		{
-			parser.yyVAL.item = &ast.ShowStmt{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ShowStmt{
 				Tp: ast.ShowCollation,
 			}
 		}
 	case 1315:
 		{
-			parser.yyVAL.item = &ast.ShowStmt{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ShowStmt{
 				Tp:     ast.ShowTriggers,
-				DBName: yyS[yypt-0].item.(string),
+				DBName: yyS.item[yypt-0].(string),
 			}
 		}
 	case 1316:
 		{
-			parser.yyVAL.item = &ast.ShowStmt{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ShowStmt{
 				Tp: ast.ShowProcedureStatus,
 			}
 		}
 	case 1317:
 		{
-			parser.yyVAL.item = &ast.ShowStmt{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ShowStmt{
 				Tp: ast.ShowPumpStatus,
 			}
 		}
 	case 1318:
 		{
-			parser.yyVAL.item = &ast.ShowStmt{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ShowStmt{
 				Tp: ast.ShowDrainerStatus,
 			}
 		}
@@ -13343,149 +14265,178 @@ yynewstate:
 			// See http://dev.mysql.com/doc/refman/5.7/en/show-function-status.html
 			// We do not support neither stored functions nor stored procedures.
 			// So we reuse show procedure status process logic.
-			parser.yyVAL.item = &ast.ShowStmt{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ShowStmt{
 				Tp: ast.ShowProcedureStatus,
 			}
 		}
 	case 1320:
 		{
-			parser.yyVAL.item = &ast.ShowStmt{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ShowStmt{
 				Tp:     ast.ShowEvents,
-				DBName: yyS[yypt-0].item.(string),
+				DBName: yyS.item[yypt-0].(string),
 			}
 		}
 	case 1321:
 		{
-			parser.yyVAL.item = &ast.ShowStmt{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ShowStmt{
 				Tp: ast.ShowPlugins,
 			}
 		}
 	case 1322:
 		{
-			parser.yyVAL.item = nil
+			yyVAL.typ = itemType
+			yyVAL.item = nil
 		}
 	case 1323:
 		{
-			parser.yyVAL.item = &ast.PatternLikeExpr{
-				Pattern: yyS[yypt-0].expr,
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.PatternLikeExpr{
+				Pattern: yyS.expr[yypt-0],
 				Escape:  '\\',
 			}
 		}
 	case 1324:
 		{
-			parser.yyVAL.item = yyS[yypt-0].expr
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.expr[yypt-0]
 		}
 	case 1325:
 		{
-			parser.yyVAL.item = false
+			yyVAL.typ = itemType
+			yyVAL.item = false
 		}
 	case 1326:
 		{
-			parser.yyVAL.item = true
+			yyVAL.typ = itemType
+			yyVAL.item = true
 		}
 	case 1327:
 		{
-			parser.yyVAL.item = false
+			yyVAL.typ = itemType
+			yyVAL.item = false
 		}
 	case 1328:
 		{
-			parser.yyVAL.item = false
+			yyVAL.typ = itemType
+			yyVAL.item = false
 		}
 	case 1329:
 		{
-			parser.yyVAL.item = true
+			yyVAL.typ = itemType
+			yyVAL.item = true
 		}
 	case 1330:
 		{
-			parser.yyVAL.item = ""
+			yyVAL.typ = itemType
+			yyVAL.item = ""
 		}
 	case 1331:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item.(string)
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0].(string)
 		}
 	case 1332:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item.(*ast.TableName)
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0].(*ast.TableName)
 		}
 	case 1333:
 		{
-			tmp := yyS[yypt-0].item.(*ast.FlushStmt)
-			tmp.NoWriteToBinLog = yyS[yypt-1].item.(bool)
-			parser.yyVAL.statement = tmp
+			tmp := yyS.item[yypt-0].(*ast.FlushStmt)
+			tmp.NoWriteToBinLog = yyS.item[yypt-1].(bool)
+			yyVAL.typ = statementType
+			yyVAL.statement = tmp
 		}
 	case 1334:
 		{
-			parser.yyVAL.item = []string{yyS[yypt-0].ident}
+			yyVAL.typ = itemType
+			yyVAL.item = []string{yyS.ident[yypt-0]}
 		}
 	case 1335:
 		{
-			parser.yyVAL.item = append(yyS[yypt-2].item.([]string), yyS[yypt-0].ident)
+			yyVAL.typ = itemType
+			yyVAL.item = append(yyS.item[yypt-2].([]string), yyS.ident[yypt-0])
 		}
 	case 1336:
 		{
-			parser.yyVAL.item = &ast.FlushStmt{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.FlushStmt{
 				Tp: ast.FlushPrivileges,
 			}
 		}
 	case 1337:
 		{
-			parser.yyVAL.item = &ast.FlushStmt{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.FlushStmt{
 				Tp: ast.FlushStatus,
 			}
 		}
 	case 1338:
 		{
-			parser.yyVAL.item = &ast.FlushStmt{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.FlushStmt{
 				Tp:      ast.FlushTiDBPlugin,
-				Plugins: yyS[yypt-0].item.([]string),
+				Plugins: yyS.item[yypt-0].([]string),
 			}
 		}
 	case 1339:
 		{
-			parser.yyVAL.item = &ast.FlushStmt{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.FlushStmt{
 				Tp:       ast.FlushTables,
-				Tables:   yyS[yypt-1].item.([]*ast.TableName),
-				ReadLock: yyS[yypt-0].item.(bool),
+				Tables:   yyS.item[yypt-1].([]*ast.TableName),
+				ReadLock: yyS.item[yypt-0].(bool),
 			}
 		}
 	case 1340:
 		{
-			parser.yyVAL.item = false
+			yyVAL.typ = itemType
+			yyVAL.item = false
 		}
 	case 1341:
 		{
-			parser.yyVAL.item = true
+			yyVAL.typ = itemType
+			yyVAL.item = true
 		}
 	case 1342:
 		{
-			parser.yyVAL.item = true
+			yyVAL.typ = itemType
+			yyVAL.item = true
 		}
 	case 1343:
 		{
-			parser.yyVAL.item = []*ast.TableName{}
+			yyVAL.typ = itemType
+			yyVAL.item = []*ast.TableName{}
 		}
 	case 1344:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0]
 		}
 	case 1345:
 		{
-			parser.yyVAL.item = false
+			yyVAL.typ = itemType
+			yyVAL.item = false
 		}
 	case 1346:
 		{
-			parser.yyVAL.item = true
+			yyVAL.typ = itemType
+			yyVAL.item = true
 		}
 	case 1398:
 		{
 			// `(select 1)`; is a valid select statement
 			// TODO: This is used to fix issue #320. There may be a better solution.
-			parser.yyVAL.statement = yyS[yypt-0].expr.(*ast.SubqueryExpr).Query.(ast.StmtNode)
+			yyVAL.typ = statementType
+			yyVAL.statement = yyS.expr[yypt-0].(*ast.SubqueryExpr).Query.(ast.StmtNode)
 		}
 	case 1417:
 		{
-			if yyS[yypt-0].statement != nil {
-				s := yyS[yypt-0].statement
+			if yyS.statement[yypt-0] != nil {
+				s := yyS.statement[yypt-0]
 				if lexer, ok := yylex.(stmtTexter); ok {
 					s.SetText(lexer.stmtText())
 				}
@@ -13494,8 +14445,8 @@ yynewstate:
 		}
 	case 1418:
 		{
-			if yyS[yypt-0].statement != nil {
-				s := yyS[yypt-0].statement
+			if yyS.statement[yypt-0] != nil {
+				s := yyS.statement[yypt-0]
 				if lexer, ok := yylex.(stmtTexter); ok {
 					s.SetText(lexer.stmtText())
 				}
@@ -13504,48 +14455,56 @@ yynewstate:
 		}
 	case 1419:
 		{
-			cst := yyS[yypt-0].item.(*ast.Constraint)
-			if yyS[yypt-1].item != nil {
-				cst.Name = yyS[yypt-1].item.(string)
+			cst := yyS.item[yypt-0].(*ast.Constraint)
+			if yyS.item[yypt-1] != nil {
+				cst.Name = yyS.item[yypt-1].(string)
 			}
-			parser.yyVAL.item = cst
+			yyVAL.typ = itemType
+			yyVAL.item = cst
 		}
 	case 1420:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item.(*ast.ColumnDef)
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0].(*ast.ColumnDef)
 		}
 	case 1421:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item.(*ast.Constraint)
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0].(*ast.Constraint)
 		}
 	case 1422:
 		{
-			if yyS[yypt-0].item != nil {
-				parser.yyVAL.item = []interface{}{yyS[yypt-0].item.(interface{})}
+			if yyS.item[yypt-0] != nil {
+				yyVAL.typ = itemType
+				yyVAL.item = []interface{}{yyS.item[yypt-0].(interface{})}
 			} else {
-				parser.yyVAL.item = []interface{}{}
+				yyVAL.typ = itemType
+				yyVAL.item = []interface{}{}
 			}
 		}
 	case 1423:
 		{
-			if yyS[yypt-0].item != nil {
-				parser.yyVAL.item = append(yyS[yypt-2].item.([]interface{}), yyS[yypt-0].item)
+			if yyS.item[yypt-0] != nil {
+				yyVAL.typ = itemType
+				yyVAL.item = append(yyS.item[yypt-2].([]interface{}), yyS.item[yypt-0])
 			} else {
-				parser.yyVAL.item = yyS[yypt-2].item
+				yyVAL.typ = itemType
+				yyVAL.item = yyS.item[yypt-2]
 			}
 		}
 	case 1424:
 		{
 			var columnDefs []*ast.ColumnDef
 			var constraints []*ast.Constraint
-			parser.yyVAL.item = &ast.CreateTableStmt{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.CreateTableStmt{
 				Cols:        columnDefs,
 				Constraints: constraints,
 			}
 		}
 	case 1425:
 		{
-			tes := yyS[yypt-1].item.([]interface{})
+			tes := yyS.item[yypt-1].([]interface{})
 			var columnDefs []*ast.ColumnDef
 			var constraints []*ast.Constraint
 			for _, te := range tes {
@@ -13556,170 +14515,209 @@ yynewstate:
 					constraints = append(constraints, te)
 				}
 			}
-			parser.yyVAL.item = &ast.CreateTableStmt{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.CreateTableStmt{
 				Cols:        columnDefs,
 				Constraints: constraints,
 			}
 		}
 	case 1426:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0]
 		}
 	case 1427:
 		{
-			parser.yyVAL.item = &ast.TableOption{Tp: ast.TableOptionCharset, StrValue: yyS[yypt-0].item.(string)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TableOption{Tp: ast.TableOptionCharset, StrValue: yyS.item[yypt-0].(string)}
 		}
 	case 1428:
 		{
-			parser.yyVAL.item = &ast.TableOption{Tp: ast.TableOptionCollate, StrValue: yyS[yypt-0].item.(string)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TableOption{Tp: ast.TableOptionCollate, StrValue: yyS.item[yypt-0].(string)}
 		}
 	case 1429:
 		{
-			parser.yyVAL.item = &ast.TableOption{Tp: ast.TableOptionAutoIncrement, UintValue: yyS[yypt-0].item.(uint64)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TableOption{Tp: ast.TableOptionAutoIncrement, UintValue: yyS.item[yypt-0].(uint64)}
 		}
 	case 1430:
 		{
-			parser.yyVAL.item = &ast.TableOption{Tp: ast.TableOptionAvgRowLength, UintValue: yyS[yypt-0].item.(uint64)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TableOption{Tp: ast.TableOptionAvgRowLength, UintValue: yyS.item[yypt-0].(uint64)}
 		}
 	case 1431:
 		{
-			parser.yyVAL.item = &ast.TableOption{Tp: ast.TableOptionConnection, StrValue: yyS[yypt-0].ident}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TableOption{Tp: ast.TableOptionConnection, StrValue: yyS.ident[yypt-0]}
 		}
 	case 1432:
 		{
-			parser.yyVAL.item = &ast.TableOption{Tp: ast.TableOptionCheckSum, UintValue: yyS[yypt-0].item.(uint64)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TableOption{Tp: ast.TableOptionCheckSum, UintValue: yyS.item[yypt-0].(uint64)}
 		}
 	case 1433:
 		{
-			parser.yyVAL.item = &ast.TableOption{Tp: ast.TableOptionPassword, StrValue: yyS[yypt-0].ident}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TableOption{Tp: ast.TableOptionPassword, StrValue: yyS.ident[yypt-0]}
 		}
 	case 1434:
 		{
-			parser.yyVAL.item = &ast.TableOption{Tp: ast.TableOptionCompression, StrValue: yyS[yypt-0].ident}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TableOption{Tp: ast.TableOptionCompression, StrValue: yyS.ident[yypt-0]}
 		}
 	case 1435:
 		{
-			parser.yyVAL.item = &ast.TableOption{Tp: ast.TableOptionKeyBlockSize, UintValue: yyS[yypt-0].item.(uint64)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TableOption{Tp: ast.TableOptionKeyBlockSize, UintValue: yyS.item[yypt-0].(uint64)}
 		}
 	case 1436:
 		{
-			parser.yyVAL.item = &ast.TableOption{Tp: ast.TableOptionDelayKeyWrite, UintValue: yyS[yypt-0].item.(uint64)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TableOption{Tp: ast.TableOptionDelayKeyWrite, UintValue: yyS.item[yypt-0].(uint64)}
 		}
 	case 1437:
 		{
-			parser.yyVAL.item = &ast.TableOption{Tp: ast.TableOptionRowFormat, UintValue: yyS[yypt-0].item.(uint64)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TableOption{Tp: ast.TableOptionRowFormat, UintValue: yyS.item[yypt-0].(uint64)}
 		}
 	case 1438:
 		{
-			parser.yyVAL.item = &ast.TableOption{Tp: ast.TableOptionStatsPersistent}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TableOption{Tp: ast.TableOptionStatsPersistent}
 		}
 	case 1439:
 		{
-			parser.yyVAL.item = &ast.TableOption{Tp: ast.TableOptionShardRowID, UintValue: yyS[yypt-0].item.(uint64)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TableOption{Tp: ast.TableOptionShardRowID, UintValue: yyS.item[yypt-0].(uint64)}
 		}
 	case 1440:
 		{
-			parser.yyVAL.item = &ast.TableOption{Tp: ast.TableOptionPreSplitRegion, UintValue: yyS[yypt-0].item.(uint64)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TableOption{Tp: ast.TableOptionPreSplitRegion, UintValue: yyS.item[yypt-0].(uint64)}
 		}
 	case 1441:
 		{
 			// Parse it but will ignore it.
-			parser.yyVAL.item = &ast.TableOption{Tp: ast.TableOptionPackKeys}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TableOption{Tp: ast.TableOptionPackKeys}
 		}
 	case 1444:
 		{
-			parser.yyVAL.item = []*ast.TableOption{}
+			yyVAL.typ = itemType
+			yyVAL.item = []*ast.TableOption{}
 		}
 	case 1446:
 		{
-			parser.yyVAL.item = []*ast.TableOption{yyS[yypt-0].item.(*ast.TableOption)}
+			yyVAL.typ = itemType
+			yyVAL.item = []*ast.TableOption{yyS.item[yypt-0].(*ast.TableOption)}
 		}
 	case 1447:
 		{
-			parser.yyVAL.item = append(yyS[yypt-1].item.([]*ast.TableOption), yyS[yypt-0].item.(*ast.TableOption))
+			yyVAL.typ = itemType
+			yyVAL.item = append(yyS.item[yypt-1].([]*ast.TableOption), yyS.item[yypt-0].(*ast.TableOption))
 		}
 	case 1448:
 		{
-			parser.yyVAL.item = append(yyS[yypt-2].item.([]*ast.TableOption), yyS[yypt-0].item.(*ast.TableOption))
+			yyVAL.typ = itemType
+			yyVAL.item = append(yyS.item[yypt-2].([]*ast.TableOption), yyS.item[yypt-0].(*ast.TableOption))
 		}
 	case 1451:
 		{
-			parser.yyVAL.statement = &ast.TruncateTableStmt{Table: yyS[yypt-0].item.(*ast.TableName)}
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.TruncateTableStmt{Table: yyS.item[yypt-0].(*ast.TableName)}
 		}
 	case 1452:
 		{
-			parser.yyVAL.item = ast.RowFormatDefault
+			yyVAL.typ = itemType
+			yyVAL.item = ast.RowFormatDefault
 		}
 	case 1453:
 		{
-			parser.yyVAL.item = ast.RowFormatDynamic
+			yyVAL.typ = itemType
+			yyVAL.item = ast.RowFormatDynamic
 		}
 	case 1454:
 		{
-			parser.yyVAL.item = ast.RowFormatFixed
+			yyVAL.typ = itemType
+			yyVAL.item = ast.RowFormatFixed
 		}
 	case 1455:
 		{
-			parser.yyVAL.item = ast.RowFormatCompressed
+			yyVAL.typ = itemType
+			yyVAL.item = ast.RowFormatCompressed
 		}
 	case 1456:
 		{
-			parser.yyVAL.item = ast.RowFormatRedundant
+			yyVAL.typ = itemType
+			yyVAL.item = ast.RowFormatRedundant
 		}
 	case 1457:
 		{
-			parser.yyVAL.item = ast.RowFormatCompact
+			yyVAL.typ = itemType
+			yyVAL.item = ast.RowFormatCompact
 		}
 	case 1458:
 		{
-			parser.yyVAL.item = ast.TokuDBRowFormatDefault
+			yyVAL.typ = itemType
+			yyVAL.item = ast.TokuDBRowFormatDefault
 		}
 	case 1459:
 		{
-			parser.yyVAL.item = ast.TokuDBRowFormatFast
+			yyVAL.typ = itemType
+			yyVAL.item = ast.TokuDBRowFormatFast
 		}
 	case 1460:
 		{
-			parser.yyVAL.item = ast.TokuDBRowFormatSmall
+			yyVAL.typ = itemType
+			yyVAL.item = ast.TokuDBRowFormatSmall
 		}
 	case 1461:
 		{
-			parser.yyVAL.item = ast.TokuDBRowFormatZlib
+			yyVAL.typ = itemType
+			yyVAL.item = ast.TokuDBRowFormatZlib
 		}
 	case 1462:
 		{
-			parser.yyVAL.item = ast.TokuDBRowFormatQuickLZ
+			yyVAL.typ = itemType
+			yyVAL.item = ast.TokuDBRowFormatQuickLZ
 		}
 	case 1463:
 		{
-			parser.yyVAL.item = ast.TokuDBRowFormatLzma
+			yyVAL.typ = itemType
+			yyVAL.item = ast.TokuDBRowFormatLzma
 		}
 	case 1464:
 		{
-			parser.yyVAL.item = ast.TokuDBRowFormatSnappy
+			yyVAL.typ = itemType
+			yyVAL.item = ast.TokuDBRowFormatSnappy
 		}
 	case 1465:
 		{
-			parser.yyVAL.item = ast.TokuDBRowFormatUncompressed
+			yyVAL.typ = itemType
+			yyVAL.item = ast.TokuDBRowFormatUncompressed
 		}
 	case 1466:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0]
 		}
 	case 1467:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0]
 		}
 	case 1468:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0]
 		}
 	case 1469:
 		{
 			// TODO: check flen 0
-			x := types.NewFieldType(yyS[yypt-2].item.(byte))
-			x.Flen = yyS[yypt-1].item.(int)
-			for _, o := range yyS[yypt-0].item.([]*ast.TypeOpt) {
+			x := types.NewFieldType(yyS.item[yypt-2].(byte))
+			x.Flen = yyS.item[yypt-1].(int)
+			for _, o := range yyS.item[yypt-0].([]*ast.TypeOpt) {
 				if o.IsUnsigned {
 					x.Flag |= mysql.UnsignedFlag
 				}
@@ -13727,14 +14725,15 @@ yynewstate:
 					x.Flag |= mysql.ZerofillFlag
 				}
 			}
-			parser.yyVAL.item = x
+			yyVAL.typ = itemType
+			yyVAL.item = x
 		}
 	case 1470:
 		{
 			// TODO: check flen 0
-			x := types.NewFieldType(yyS[yypt-1].item.(byte))
+			x := types.NewFieldType(yyS.item[yypt-1].(byte))
 			x.Flen = 1
-			for _, o := range yyS[yypt-0].item.([]*ast.TypeOpt) {
+			for _, o := range yyS.item[yypt-0].([]*ast.TypeOpt) {
 				if o.IsUnsigned {
 					x.Flag |= mysql.UnsignedFlag
 				}
@@ -13742,15 +14741,16 @@ yynewstate:
 					x.Flag |= mysql.ZerofillFlag
 				}
 			}
-			parser.yyVAL.item = x
+			yyVAL.typ = itemType
+			yyVAL.item = x
 		}
 	case 1471:
 		{
-			fopt := yyS[yypt-1].item.(*ast.FloatOpt)
-			x := types.NewFieldType(yyS[yypt-2].item.(byte))
+			fopt := yyS.item[yypt-1].(*ast.FloatOpt)
+			x := types.NewFieldType(yyS.item[yypt-2].(byte))
 			x.Flen = fopt.Flen
 			x.Decimal = fopt.Decimal
-			for _, o := range yyS[yypt-0].item.([]*ast.TypeOpt) {
+			for _, o := range yyS.item[yypt-0].([]*ast.TypeOpt) {
 				if o.IsUnsigned {
 					x.Flag |= mysql.UnsignedFlag
 				}
@@ -13758,12 +14758,13 @@ yynewstate:
 					x.Flag |= mysql.ZerofillFlag
 				}
 			}
-			parser.yyVAL.item = x
+			yyVAL.typ = itemType
+			yyVAL.item = x
 		}
 	case 1472:
 		{
-			fopt := yyS[yypt-1].item.(*ast.FloatOpt)
-			x := types.NewFieldType(yyS[yypt-2].item.(byte))
+			fopt := yyS.item[yypt-1].(*ast.FloatOpt)
+			x := types.NewFieldType(yyS.item[yypt-2].(byte))
 			x.Flen = fopt.Flen
 			if x.Tp == mysql.TypeFloat && fopt.Decimal == types.UnspecifiedLength && x.Flen <= 53 {
 				if x.Flen > 24 {
@@ -13772,7 +14773,7 @@ yynewstate:
 				x.Flen = types.UnspecifiedLength
 			}
 			x.Decimal = fopt.Decimal
-			for _, o := range yyS[yypt-0].item.([]*ast.TypeOpt) {
+			for _, o := range yyS.item[yypt-0].([]*ast.TypeOpt) {
 				if o.IsUnsigned {
 					x.Flag |= mysql.UnsignedFlag
 				}
@@ -13780,190 +14781,223 @@ yynewstate:
 					x.Flag |= mysql.ZerofillFlag
 				}
 			}
-			parser.yyVAL.item = x
+			yyVAL.typ = itemType
+			yyVAL.item = x
 		}
 	case 1473:
 		{
-			x := types.NewFieldType(yyS[yypt-1].item.(byte))
-			x.Flen = yyS[yypt-0].item.(int)
+			x := types.NewFieldType(yyS.item[yypt-1].(byte))
+			x.Flen = yyS.item[yypt-0].(int)
 			if x.Flen == types.UnspecifiedLength || x.Flen == 0 {
 				x.Flen = 1
 			} else if x.Flen > 64 {
 				yylex.AppendError(ErrTooBigDisplayWidth.GenWithStackByArgs(x.Flen))
 			}
-			parser.yyVAL.item = x
+			yyVAL.typ = itemType
+			yyVAL.item = x
 		}
 	case 1474:
 		{
-			parser.yyVAL.item = mysql.TypeTiny
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.TypeTiny
 		}
 	case 1475:
 		{
-			parser.yyVAL.item = mysql.TypeShort
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.TypeShort
 		}
 	case 1476:
 		{
-			parser.yyVAL.item = mysql.TypeInt24
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.TypeInt24
 		}
 	case 1477:
 		{
-			parser.yyVAL.item = mysql.TypeLong
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.TypeLong
 		}
 	case 1478:
 		{
-			parser.yyVAL.item = mysql.TypeTiny
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.TypeTiny
 		}
 	case 1479:
 		{
-			parser.yyVAL.item = mysql.TypeShort
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.TypeShort
 		}
 	case 1480:
 		{
-			parser.yyVAL.item = mysql.TypeInt24
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.TypeInt24
 		}
 	case 1481:
 		{
-			parser.yyVAL.item = mysql.TypeLong
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.TypeLong
 		}
 	case 1482:
 		{
-			parser.yyVAL.item = mysql.TypeLonglong
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.TypeLonglong
 		}
 	case 1483:
 		{
-			parser.yyVAL.item = mysql.TypeLong
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.TypeLong
 		}
 	case 1484:
 		{
-			parser.yyVAL.item = mysql.TypeLonglong
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.TypeLonglong
 		}
 	case 1485:
 		{
-			parser.yyVAL.item = mysql.TypeTiny
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.TypeTiny
 		}
 	case 1486:
 		{
-			parser.yyVAL.item = mysql.TypeTiny
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.TypeTiny
 		}
 	case 1490:
 		{
-			parser.yyVAL.item = mysql.TypeNewDecimal
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.TypeNewDecimal
 		}
 	case 1491:
 		{
-			parser.yyVAL.item = mysql.TypeNewDecimal
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.TypeNewDecimal
 		}
 	case 1492:
 		{
-			parser.yyVAL.item = mysql.TypeFloat
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.TypeFloat
 		}
 	case 1493:
 		{
 			if parser.lexer.GetSQLMode().HasRealAsFloatMode() {
-				parser.yyVAL.item = mysql.TypeFloat
+				yyVAL.typ = itemType
+				yyVAL.item = mysql.TypeFloat
 			} else {
-				parser.yyVAL.item = mysql.TypeDouble
+				yyVAL.typ = itemType
+				yyVAL.item = mysql.TypeDouble
 			}
 		}
 	case 1494:
 		{
-			parser.yyVAL.item = mysql.TypeDouble
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.TypeDouble
 		}
 	case 1495:
 		{
-			parser.yyVAL.item = mysql.TypeDouble
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.TypeDouble
 		}
 	case 1496:
 		{
-			parser.yyVAL.item = mysql.TypeBit
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.TypeBit
 		}
 	case 1497:
 		{
 			x := types.NewFieldType(mysql.TypeString)
-			x.Flen = yyS[yypt-1].item.(int)
-			x.Charset = yyS[yypt-0].item.(*ast.OptBinary).Charset
-			if yyS[yypt-0].item.(*ast.OptBinary).IsBinary {
+			x.Flen = yyS.item[yypt-1].(int)
+			x.Charset = yyS.item[yypt-0].(*ast.OptBinary).Charset
+			if yyS.item[yypt-0].(*ast.OptBinary).IsBinary {
 				x.Flag |= mysql.BinaryFlag
 			}
-			parser.yyVAL.item = x
+			yyVAL.typ = itemType
+			yyVAL.item = x
 		}
 	case 1498:
 		{
 			x := types.NewFieldType(mysql.TypeString)
-			x.Charset = yyS[yypt-0].item.(*ast.OptBinary).Charset
-			if yyS[yypt-0].item.(*ast.OptBinary).IsBinary {
+			x.Charset = yyS.item[yypt-0].(*ast.OptBinary).Charset
+			if yyS.item[yypt-0].(*ast.OptBinary).IsBinary {
 				x.Flag |= mysql.BinaryFlag
 			}
-			parser.yyVAL.item = x
+			yyVAL.typ = itemType
+			yyVAL.item = x
 		}
 	case 1499:
 		{
 			x := types.NewFieldType(mysql.TypeString)
-			x.Flen = yyS[yypt-1].item.(int)
-			x.Charset = yyS[yypt-0].item.(*ast.OptBinary).Charset
-			if yyS[yypt-0].item.(*ast.OptBinary).IsBinary {
+			x.Flen = yyS.item[yypt-1].(int)
+			x.Charset = yyS.item[yypt-0].(*ast.OptBinary).Charset
+			if yyS.item[yypt-0].(*ast.OptBinary).IsBinary {
 				x.Flag |= mysql.BinaryFlag
 			}
-			parser.yyVAL.item = x
+			yyVAL.typ = itemType
+			yyVAL.item = x
 		}
 	case 1500:
 		{
 			x := types.NewFieldType(mysql.TypeVarchar)
-			x.Flen = yyS[yypt-1].item.(int)
-			x.Charset = yyS[yypt-0].item.(*ast.OptBinary).Charset
-			if yyS[yypt-0].item.(*ast.OptBinary).IsBinary {
+			x.Flen = yyS.item[yypt-1].(int)
+			x.Charset = yyS.item[yypt-0].(*ast.OptBinary).Charset
+			if yyS.item[yypt-0].(*ast.OptBinary).IsBinary {
 				x.Flag |= mysql.BinaryFlag
 			}
-			parser.yyVAL.item = x
+			yyVAL.typ = itemType
+			yyVAL.item = x
 		}
 	case 1501:
 		{
 			x := types.NewFieldType(mysql.TypeString)
-			x.Flen = yyS[yypt-0].item.(int)
+			x.Flen = yyS.item[yypt-0].(int)
 			x.Charset = charset.CharsetBin
 			x.Collate = charset.CharsetBin
 			x.Flag |= mysql.BinaryFlag
-			parser.yyVAL.item = x
+			yyVAL.typ = itemType
+			yyVAL.item = x
 		}
 	case 1502:
 		{
 			x := types.NewFieldType(mysql.TypeVarchar)
-			x.Flen = yyS[yypt-0].item.(int)
+			x.Flen = yyS.item[yypt-0].(int)
 			x.Charset = charset.CharsetBin
 			x.Collate = charset.CharsetBin
 			x.Flag |= mysql.BinaryFlag
-			parser.yyVAL.item = x
+			yyVAL.typ = itemType
+			yyVAL.item = x
 		}
 	case 1503:
 		{
-			x := yyS[yypt-0].item.(*types.FieldType)
+			x := yyS.item[yypt-0].(*types.FieldType)
 			x.Charset = charset.CharsetBin
 			x.Collate = charset.CharsetBin
 			x.Flag |= mysql.BinaryFlag
-			parser.yyVAL.item = yyS[yypt-0].item.(*types.FieldType)
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0].(*types.FieldType)
 		}
 	case 1504:
 		{
-			x := yyS[yypt-1].item.(*types.FieldType)
-			x.Charset = yyS[yypt-0].item.(*ast.OptBinary).Charset
-			if yyS[yypt-0].item.(*ast.OptBinary).IsBinary {
+			x := yyS.item[yypt-1].(*types.FieldType)
+			x.Charset = yyS.item[yypt-0].(*ast.OptBinary).Charset
+			if yyS.item[yypt-0].(*ast.OptBinary).IsBinary {
 				x.Flag |= mysql.BinaryFlag
 			}
-			parser.yyVAL.item = x
+			yyVAL.typ = itemType
+			yyVAL.item = x
 		}
 	case 1505:
 		{
 			x := types.NewFieldType(mysql.TypeEnum)
-			x.Elems = yyS[yypt-2].item.([]string)
-			x.Charset = yyS[yypt-0].item.(string)
-			parser.yyVAL.item = x
+			x.Elems = yyS.item[yypt-2].([]string)
+			x.Charset = yyS.item[yypt-0].(string)
+			yyVAL.typ = itemType
+			yyVAL.item = x
 		}
 	case 1506:
 		{
 			x := types.NewFieldType(mysql.TypeSet)
-			x.Elems = yyS[yypt-2].item.([]string)
-			x.Charset = yyS[yypt-0].item.(string)
-			parser.yyVAL.item = x
+			x.Elems = yyS.item[yypt-2].([]string)
+			x.Charset = yyS.item[yypt-0].(string)
+			yyVAL.typ = itemType
+			yyVAL.item = x
 		}
 	case 1507:
 		{
@@ -13971,540 +15005,630 @@ yynewstate:
 			x.Decimal = 0
 			x.Charset = charset.CharsetBin
 			x.Collate = charset.CollationBin
-			parser.yyVAL.item = x
+			yyVAL.typ = itemType
+			yyVAL.item = x
 		}
 	case 1513:
 		{
 			x := types.NewFieldType(mysql.TypeTinyBlob)
-			parser.yyVAL.item = x
+			yyVAL.typ = itemType
+			yyVAL.item = x
 		}
 	case 1514:
 		{
 			x := types.NewFieldType(mysql.TypeBlob)
-			x.Flen = yyS[yypt-0].item.(int)
-			parser.yyVAL.item = x
+			x.Flen = yyS.item[yypt-0].(int)
+			yyVAL.typ = itemType
+			yyVAL.item = x
 		}
 	case 1515:
 		{
 			x := types.NewFieldType(mysql.TypeMediumBlob)
-			parser.yyVAL.item = x
+			yyVAL.typ = itemType
+			yyVAL.item = x
 		}
 	case 1516:
 		{
 			x := types.NewFieldType(mysql.TypeLongBlob)
-			parser.yyVAL.item = x
+			yyVAL.typ = itemType
+			yyVAL.item = x
 		}
 	case 1517:
 		{
 			x := types.NewFieldType(mysql.TypeTinyBlob)
-			parser.yyVAL.item = x
+			yyVAL.typ = itemType
+			yyVAL.item = x
 
 		}
 	case 1518:
 		{
 			x := types.NewFieldType(mysql.TypeBlob)
-			x.Flen = yyS[yypt-0].item.(int)
-			parser.yyVAL.item = x
+			x.Flen = yyS.item[yypt-0].(int)
+			yyVAL.typ = itemType
+			yyVAL.item = x
 		}
 	case 1519:
 		{
 			x := types.NewFieldType(mysql.TypeMediumBlob)
-			parser.yyVAL.item = x
+			yyVAL.typ = itemType
+			yyVAL.item = x
 		}
 	case 1520:
 		{
 			x := types.NewFieldType(mysql.TypeLongBlob)
-			parser.yyVAL.item = x
+			yyVAL.typ = itemType
+			yyVAL.item = x
 		}
 	case 1521:
 		{
 			x := types.NewFieldType(mysql.TypeMediumBlob)
-			parser.yyVAL.item = x
+			yyVAL.typ = itemType
+			yyVAL.item = x
 		}
 	case 1522:
 		{
 			x := types.NewFieldType(mysql.TypeDate)
-			parser.yyVAL.item = x
+			yyVAL.typ = itemType
+			yyVAL.item = x
 		}
 	case 1523:
 		{
 			x := types.NewFieldType(mysql.TypeDatetime)
 			x.Flen = mysql.MaxDatetimeWidthNoFsp
-			x.Decimal = yyS[yypt-0].item.(int)
+			x.Decimal = yyS.item[yypt-0].(int)
 			if x.Decimal > 0 {
 				x.Flen = x.Flen + 1 + x.Decimal
 			}
-			parser.yyVAL.item = x
+			yyVAL.typ = itemType
+			yyVAL.item = x
 		}
 	case 1524:
 		{
 			x := types.NewFieldType(mysql.TypeTimestamp)
 			x.Flen = mysql.MaxDatetimeWidthNoFsp
-			x.Decimal = yyS[yypt-0].item.(int)
+			x.Decimal = yyS.item[yypt-0].(int)
 			if x.Decimal > 0 {
 				x.Flen = x.Flen + 1 + x.Decimal
 			}
-			parser.yyVAL.item = x
+			yyVAL.typ = itemType
+			yyVAL.item = x
 		}
 	case 1525:
 		{
 			x := types.NewFieldType(mysql.TypeDuration)
 			x.Flen = mysql.MaxDurationWidthNoFsp
-			x.Decimal = yyS[yypt-0].item.(int)
+			x.Decimal = yyS.item[yypt-0].(int)
 			if x.Decimal > 0 {
 				x.Flen = x.Flen + 1 + x.Decimal
 			}
-			parser.yyVAL.item = x
+			yyVAL.typ = itemType
+			yyVAL.item = x
 		}
 	case 1526:
 		{
 			x := types.NewFieldType(mysql.TypeYear)
-			x.Flen = yyS[yypt-1].item.(int)
+			x.Flen = yyS.item[yypt-1].(int)
 			if x.Flen != types.UnspecifiedLength && x.Flen != 4 {
 				yylex.AppendError(ErrInvalidYearColumnLength.GenWithStackByArgs())
 				return -1
 			}
-			parser.yyVAL.item = x
+			yyVAL.typ = itemType
+			yyVAL.item = x
 		}
 	case 1527:
 		{
-			parser.yyVAL.item = int(yyS[yypt-1].item.(uint64))
+			yyVAL.typ = itemType
+			yyVAL.item = int(yyS.item[yypt-1].(uint64))
 		}
 	case 1528:
 		{
-			parser.yyVAL.item = types.UnspecifiedLength
+			yyVAL.typ = itemType
+			yyVAL.item = types.UnspecifiedLength
 		}
 	case 1529:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item.(int)
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0].(int)
 		}
 	case 1530:
 		{
-			parser.yyVAL.item = &ast.TypeOpt{IsUnsigned: true}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TypeOpt{IsUnsigned: true}
 		}
 	case 1531:
 		{
-			parser.yyVAL.item = &ast.TypeOpt{IsUnsigned: false}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TypeOpt{IsUnsigned: false}
 		}
 	case 1532:
 		{
-			parser.yyVAL.item = &ast.TypeOpt{IsZerofill: true, IsUnsigned: true}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TypeOpt{IsZerofill: true, IsUnsigned: true}
 		}
 	case 1533:
 		{
-			parser.yyVAL.item = []*ast.TypeOpt{}
+			yyVAL.typ = itemType
+			yyVAL.item = []*ast.TypeOpt{}
 		}
 	case 1534:
 		{
-			parser.yyVAL.item = append(yyS[yypt-1].item.([]*ast.TypeOpt), yyS[yypt-0].item.(*ast.TypeOpt))
+			yyVAL.typ = itemType
+			yyVAL.item = append(yyS.item[yypt-1].([]*ast.TypeOpt), yyS.item[yypt-0].(*ast.TypeOpt))
 		}
 	case 1535:
 		{
-			parser.yyVAL.item = &ast.FloatOpt{Flen: types.UnspecifiedLength, Decimal: types.UnspecifiedLength}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.FloatOpt{Flen: types.UnspecifiedLength, Decimal: types.UnspecifiedLength}
 		}
 	case 1536:
 		{
-			parser.yyVAL.item = &ast.FloatOpt{Flen: yyS[yypt-0].item.(int), Decimal: types.UnspecifiedLength}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.FloatOpt{Flen: yyS.item[yypt-0].(int), Decimal: types.UnspecifiedLength}
 		}
 	case 1537:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item.(*ast.FloatOpt)
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0].(*ast.FloatOpt)
 		}
 	case 1538:
 		{
-			parser.yyVAL.item = &ast.FloatOpt{Flen: int(yyS[yypt-3].item.(uint64)), Decimal: int(yyS[yypt-1].item.(uint64))}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.FloatOpt{Flen: int(yyS.item[yypt-3].(uint64)), Decimal: int(yyS.item[yypt-1].(uint64))}
 		}
 	case 1539:
 		{
-			parser.yyVAL.item = false
+			yyVAL.typ = itemType
+			yyVAL.item = false
 		}
 	case 1540:
 		{
-			parser.yyVAL.item = true
+			yyVAL.typ = itemType
+			yyVAL.item = true
 		}
 	case 1541:
 		{
-			parser.yyVAL.item = &ast.OptBinary{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.OptBinary{
 				IsBinary: false,
 				Charset:  "",
 			}
 		}
 	case 1542:
 		{
-			parser.yyVAL.item = &ast.OptBinary{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.OptBinary{
 				IsBinary: true,
-				Charset:  yyS[yypt-0].item.(string),
+				Charset:  yyS.item[yypt-0].(string),
 			}
 		}
 	case 1543:
 		{
-			parser.yyVAL.item = &ast.OptBinary{
-				IsBinary: yyS[yypt-0].item.(bool),
-				Charset:  yyS[yypt-1].item.(string),
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.OptBinary{
+				IsBinary: yyS.item[yypt-0].(bool),
+				Charset:  yyS.item[yypt-1].(string),
 			}
 		}
 	case 1544:
 		{
-			parser.yyVAL.item = ""
+			yyVAL.typ = itemType
+			yyVAL.item = ""
 		}
 	case 1545:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item.(string)
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0].(string)
 		}
 	case 1549:
 		{
-			parser.yyVAL.item = ""
+			yyVAL.typ = itemType
+			yyVAL.item = ""
 		}
 	case 1550:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item.(string)
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0].(string)
 		}
 	case 1551:
 		{
-			parser.yyVAL.item = []string{yyS[yypt-0].ident}
+			yyVAL.typ = itemType
+			yyVAL.item = []string{yyS.ident[yypt-0]}
 		}
 	case 1552:
 		{
-			parser.yyVAL.item = append(yyS[yypt-2].item.([]string), yyS[yypt-0].ident)
+			yyVAL.typ = itemType
+			yyVAL.item = append(yyS.item[yypt-2].([]string), yyS.ident[yypt-0])
 		}
 	case 1553:
 		{
-			parser.yyVAL.item = yyS[yypt-0].ident
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.ident[yypt-0]
 		}
 	case 1554:
 		{
-			parser.yyVAL.item = yyS[yypt-0].ident
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.ident[yypt-0]
 		}
 	case 1555:
 		{
 			var refs *ast.Join
-			if x, ok := yyS[yypt-5].item.(*ast.Join); ok {
+			if x, ok := yyS.item[yypt-5].(*ast.Join); ok {
 				refs = x
 			} else {
-				refs = &ast.Join{Left: yyS[yypt-5].item.(ast.ResultSetNode)}
+				refs = &ast.Join{Left: yyS.item[yypt-5].(ast.ResultSetNode)}
 			}
 			st := &ast.UpdateStmt{
-				Priority:  yyS[yypt-7].item.(mysql.PriorityEnum),
+				Priority:  yyS.item[yypt-7].(mysql.PriorityEnum),
 				TableRefs: &ast.TableRefsClause{TableRefs: refs},
-				List:      yyS[yypt-3].item.([]*ast.Assignment),
-				IgnoreErr: yyS[yypt-6].item.(bool),
+				List:      yyS.item[yypt-3].([]*ast.Assignment),
+				IgnoreErr: yyS.item[yypt-6].(bool),
 			}
-			if yyS[yypt-8].item != nil {
-				st.TableHints = yyS[yypt-8].item.([]*ast.TableOptimizerHint)
+			if yyS.item[yypt-8] != nil {
+				st.TableHints = yyS.item[yypt-8].([]*ast.TableOptimizerHint)
 			}
-			if yyS[yypt-2].item != nil {
-				st.Where = yyS[yypt-2].item.(ast.ExprNode)
+			if yyS.item[yypt-2] != nil {
+				st.Where = yyS.item[yypt-2].(ast.ExprNode)
 			}
-			if yyS[yypt-1].item != nil {
-				st.Order = yyS[yypt-1].item.(*ast.OrderByClause)
+			if yyS.item[yypt-1] != nil {
+				st.Order = yyS.item[yypt-1].(*ast.OrderByClause)
 			}
-			if yyS[yypt-0].item != nil {
-				st.Limit = yyS[yypt-0].item.(*ast.Limit)
+			if yyS.item[yypt-0] != nil {
+				st.Limit = yyS.item[yypt-0].(*ast.Limit)
 			}
-			parser.yyVAL.statement = st
+			yyVAL.typ = statementType
+			yyVAL.statement = st
 		}
 	case 1556:
 		{
 			st := &ast.UpdateStmt{
-				Priority:  yyS[yypt-5].item.(mysql.PriorityEnum),
-				TableRefs: &ast.TableRefsClause{TableRefs: yyS[yypt-3].item.(*ast.Join)},
-				List:      yyS[yypt-1].item.([]*ast.Assignment),
-				IgnoreErr: yyS[yypt-4].item.(bool),
+				Priority:  yyS.item[yypt-5].(mysql.PriorityEnum),
+				TableRefs: &ast.TableRefsClause{TableRefs: yyS.item[yypt-3].(*ast.Join)},
+				List:      yyS.item[yypt-1].([]*ast.Assignment),
+				IgnoreErr: yyS.item[yypt-4].(bool),
 			}
-			if yyS[yypt-6].item != nil {
-				st.TableHints = yyS[yypt-6].item.([]*ast.TableOptimizerHint)
+			if yyS.item[yypt-6] != nil {
+				st.TableHints = yyS.item[yypt-6].([]*ast.TableOptimizerHint)
 			}
-			if yyS[yypt-0].item != nil {
-				st.Where = yyS[yypt-0].item.(ast.ExprNode)
+			if yyS.item[yypt-0] != nil {
+				st.Where = yyS.item[yypt-0].(ast.ExprNode)
 			}
-			parser.yyVAL.statement = st
+			yyVAL.typ = statementType
+			yyVAL.statement = st
 		}
 	case 1557:
 		{
-			parser.yyVAL.statement = &ast.UseStmt{DBName: yyS[yypt-0].item.(string)}
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.UseStmt{DBName: yyS.item[yypt-0].(string)}
 		}
 	case 1558:
 		{
-			parser.yyVAL.item = yyS[yypt-0].expr
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.expr[yypt-0]
 		}
 	case 1559:
 		{
-			parser.yyVAL.item = nil
+			yyVAL.typ = itemType
+			yyVAL.item = nil
 		}
 	case 1560:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0]
 		}
 	case 1563:
 		{
 			// See https://dev.mysql.com/doc/refman/5.7/en/create-user.html
-			parser.yyVAL.statement = &ast.CreateUserStmt{
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.CreateUserStmt{
 				IsCreateRole:          false,
-				IfNotExists:           yyS[yypt-4].item.(bool),
-				Specs:                 yyS[yypt-3].item.([]*ast.UserSpec),
-				TslOptions:            yyS[yypt-2].item.([]*ast.TslOption),
-				ResourceOptions:       yyS[yypt-1].item.([]*ast.ResourceOption),
-				PasswordOrLockOptions: yyS[yypt-0].item.([]*ast.PasswordOrLockOption),
+				IfNotExists:           yyS.item[yypt-4].(bool),
+				Specs:                 yyS.item[yypt-3].([]*ast.UserSpec),
+				TslOptions:            yyS.item[yypt-2].([]*ast.TslOption),
+				ResourceOptions:       yyS.item[yypt-1].([]*ast.ResourceOption),
+				PasswordOrLockOptions: yyS.item[yypt-0].([]*ast.PasswordOrLockOption),
 			}
 		}
 	case 1564:
 		{
 			// See https://dev.mysql.com/doc/refman/8.0/en/create-role.html
-			parser.yyVAL.statement = &ast.CreateUserStmt{
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.CreateUserStmt{
 				IsCreateRole: true,
-				IfNotExists:  yyS[yypt-1].item.(bool),
-				Specs:        yyS[yypt-0].item.([]*ast.UserSpec),
+				IfNotExists:  yyS.item[yypt-1].(bool),
+				Specs:        yyS.item[yypt-0].([]*ast.UserSpec),
 			}
 		}
 	case 1565:
 		{
-			parser.yyVAL.statement = &ast.AlterUserStmt{
-				IfExists: yyS[yypt-1].item.(bool),
-				Specs:    yyS[yypt-0].item.([]*ast.UserSpec),
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.AlterUserStmt{
+				IfExists: yyS.item[yypt-1].(bool),
+				Specs:    yyS.item[yypt-0].([]*ast.UserSpec),
 			}
 		}
 	case 1566:
 		{
 			auth := &ast.AuthOption{
-				AuthString:   yyS[yypt-0].item.(string),
+				AuthString:   yyS.item[yypt-0].(string),
 				ByAuthString: true,
 			}
-			parser.yyVAL.statement = &ast.AlterUserStmt{
-				IfExists:    yyS[yypt-6].item.(bool),
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.AlterUserStmt{
+				IfExists:    yyS.item[yypt-6].(bool),
 				CurrentAuth: auth,
 			}
 		}
 	case 1567:
 		{
 			userSpec := &ast.UserSpec{
-				User: yyS[yypt-1].item.(*auth.UserIdentity),
+				User: yyS.item[yypt-1].(*auth.UserIdentity),
 			}
-			if yyS[yypt-0].item != nil {
-				userSpec.AuthOpt = yyS[yypt-0].item.(*ast.AuthOption)
+			if yyS.item[yypt-0] != nil {
+				userSpec.AuthOpt = yyS.item[yypt-0].(*ast.AuthOption)
 			}
-			parser.yyVAL.item = userSpec
+			yyVAL.typ = itemType
+			yyVAL.item = userSpec
 		}
 	case 1568:
 		{
-			parser.yyVAL.item = []*ast.UserSpec{yyS[yypt-0].item.(*ast.UserSpec)}
+			yyVAL.typ = itemType
+			yyVAL.item = []*ast.UserSpec{yyS.item[yypt-0].(*ast.UserSpec)}
 		}
 	case 1569:
 		{
-			parser.yyVAL.item = append(yyS[yypt-2].item.([]*ast.UserSpec), yyS[yypt-0].item.(*ast.UserSpec))
+			yyVAL.typ = itemType
+			yyVAL.item = append(yyS.item[yypt-2].([]*ast.UserSpec), yyS.item[yypt-0].(*ast.UserSpec))
 		}
 	case 1570:
 		{
 			l := []*ast.ResourceOption{}
-			parser.yyVAL.item = l
+			yyVAL.typ = itemType
+			yyVAL.item = l
 		}
 	case 1571:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0]
 		}
 	case 1572:
 		{
-			parser.yyVAL.item = []*ast.ResourceOption{yyS[yypt-0].item.(*ast.ResourceOption)}
+			yyVAL.typ = itemType
+			yyVAL.item = []*ast.ResourceOption{yyS.item[yypt-0].(*ast.ResourceOption)}
 		}
 	case 1573:
 		{
-			l := yyS[yypt-1].item.([]*ast.ResourceOption)
-			l = append(l, yyS[yypt-0].item.(*ast.ResourceOption))
-			parser.yyVAL.item = l
+			l := yyS.item[yypt-1].([]*ast.ResourceOption)
+			l = append(l, yyS.item[yypt-0].(*ast.ResourceOption))
+			yyVAL.typ = itemType
+			yyVAL.item = l
 		}
 	case 1574:
 		{
-			parser.yyVAL.item = &ast.ResourceOption{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ResourceOption{
 				Type:  ast.MaxQueriesPerHour,
-				Count: yyS[yypt-0].item.(int64),
+				Count: yyS.item[yypt-0].(int64),
 			}
 		}
 	case 1575:
 		{
-			parser.yyVAL.item = &ast.ResourceOption{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ResourceOption{
 				Type:  ast.MaxUpdatesPerHour,
-				Count: yyS[yypt-0].item.(int64),
+				Count: yyS.item[yypt-0].(int64),
 			}
 		}
 	case 1576:
 		{
-			parser.yyVAL.item = &ast.ResourceOption{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ResourceOption{
 				Type:  ast.MaxConnectionsPerHour,
-				Count: yyS[yypt-0].item.(int64),
+				Count: yyS.item[yypt-0].(int64),
 			}
 		}
 	case 1577:
 		{
-			parser.yyVAL.item = &ast.ResourceOption{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.ResourceOption{
 				Type:  ast.MaxUserConnections,
-				Count: yyS[yypt-0].item.(int64),
+				Count: yyS.item[yypt-0].(int64),
 			}
 		}
 	case 1578:
 		{
 			l := []*ast.TslOption{}
-			parser.yyVAL.item = l
+			yyVAL.typ = itemType
+			yyVAL.item = l
 		}
 	case 1579:
 		{
 			t := &ast.TslOption{
 				Type: ast.TslNone,
 			}
-			parser.yyVAL.item = []*ast.TslOption{t}
+			yyVAL.typ = itemType
+			yyVAL.item = []*ast.TslOption{t}
 		}
 	case 1580:
 		{
 			t := &ast.TslOption{
 				Type: ast.Ssl,
 			}
-			parser.yyVAL.item = []*ast.TslOption{t}
+			yyVAL.typ = itemType
+			yyVAL.item = []*ast.TslOption{t}
 		}
 	case 1581:
 		{
 			t := &ast.TslOption{
 				Type: ast.X509,
 			}
-			parser.yyVAL.item = []*ast.TslOption{t}
+			yyVAL.typ = itemType
+			yyVAL.item = []*ast.TslOption{t}
 		}
 	case 1582:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0]
 		}
 	case 1583:
 		{
-			parser.yyVAL.item = []*ast.TslOption{yyS[yypt-0].item.(*ast.TslOption)}
+			yyVAL.typ = itemType
+			yyVAL.item = []*ast.TslOption{yyS.item[yypt-0].(*ast.TslOption)}
 		}
 	case 1584:
 		{
-			l := yyS[yypt-0].item.([]*ast.TslOption)
-			l = append(l, yyS[yypt-2].item.(*ast.TslOption))
-			parser.yyVAL.item = l
+			l := yyS.item[yypt-0].([]*ast.TslOption)
+			l = append(l, yyS.item[yypt-2].(*ast.TslOption))
+			yyVAL.typ = itemType
+			yyVAL.item = l
 		}
 	case 1585:
 		{
-			parser.yyVAL.item = &ast.TslOption{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TslOption{
 				Type:  ast.Issuer,
-				Value: yyS[yypt-0].ident,
+				Value: yyS.ident[yypt-0],
 			}
 		}
 	case 1586:
 		{
-			parser.yyVAL.item = &ast.TslOption{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TslOption{
 				Type:  ast.Subject,
-				Value: yyS[yypt-0].ident,
+				Value: yyS.ident[yypt-0],
 			}
 		}
 	case 1587:
 		{
-			parser.yyVAL.item = &ast.TslOption{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.TslOption{
 				Type:  ast.Cipher,
-				Value: yyS[yypt-0].ident,
+				Value: yyS.ident[yypt-0],
 			}
 		}
 	case 1588:
 		{
 			l := []*ast.PasswordOrLockOption{}
-			parser.yyVAL.item = l
+			yyVAL.typ = itemType
+			yyVAL.item = l
 		}
 	case 1589:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0]
 		}
 	case 1590:
 		{
-			parser.yyVAL.item = []*ast.PasswordOrLockOption{yyS[yypt-0].item.(*ast.PasswordOrLockOption)}
+			yyVAL.typ = itemType
+			yyVAL.item = []*ast.PasswordOrLockOption{yyS.item[yypt-0].(*ast.PasswordOrLockOption)}
 		}
 	case 1591:
 		{
-			l := yyS[yypt-1].item.([]*ast.PasswordOrLockOption)
-			l = append(l, yyS[yypt-0].item.(*ast.PasswordOrLockOption))
-			parser.yyVAL.item = l
+			l := yyS.item[yypt-1].([]*ast.PasswordOrLockOption)
+			l = append(l, yyS.item[yypt-0].(*ast.PasswordOrLockOption))
+			yyVAL.typ = itemType
+			yyVAL.item = l
 		}
 	case 1592:
 		{
-			parser.yyVAL.item = &ast.PasswordOrLockOption{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.PasswordOrLockOption{
 				Type: ast.Unlock,
 			}
 		}
 	case 1593:
 		{
-			parser.yyVAL.item = &ast.PasswordOrLockOption{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.PasswordOrLockOption{
 				Type: ast.Lock,
 			}
 		}
 	case 1594:
 		{
-			parser.yyVAL.item = &ast.PasswordOrLockOption{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.PasswordOrLockOption{
 				Type: ast.PasswordExpire,
 			}
 		}
 	case 1595:
 		{
-			parser.yyVAL.item = &ast.PasswordOrLockOption{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.PasswordOrLockOption{
 				Type:  ast.PasswordExpireInterval,
-				Count: yyS[yypt-1].item.(int64),
+				Count: yyS.item[yypt-1].(int64),
 			}
 		}
 	case 1596:
 		{
-			parser.yyVAL.item = &ast.PasswordOrLockOption{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.PasswordOrLockOption{
 				Type: ast.PasswordExpireNever,
 			}
 		}
 	case 1597:
 		{
-			parser.yyVAL.item = &ast.PasswordOrLockOption{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.PasswordOrLockOption{
 				Type: ast.PasswordExpireDefault,
 			}
 		}
 	case 1598:
 		{
-			parser.yyVAL.item = nil
+			yyVAL.typ = itemType
+			yyVAL.item = nil
 		}
 	case 1599:
 		{
-			parser.yyVAL.item = nil
+			yyVAL.typ = itemType
+			yyVAL.item = nil
 		}
 	case 1600:
 		{
-			parser.yyVAL.item = nil
+			yyVAL.typ = itemType
+			yyVAL.item = nil
 		}
 	case 1601:
 		{
-			parser.yyVAL.item = &ast.AuthOption{
-				AuthString:   yyS[yypt-0].item.(string),
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.AuthOption{
+				AuthString:   yyS.item[yypt-0].(string),
 				ByAuthString: true,
 			}
 		}
 	case 1602:
 		{
-			parser.yyVAL.item = nil
+			yyVAL.typ = itemType
+			yyVAL.item = nil
 		}
 	case 1603:
 		{
-			parser.yyVAL.item = &ast.AuthOption{
-				AuthString:   yyS[yypt-0].item.(string),
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.AuthOption{
+				AuthString:   yyS.item[yypt-0].(string),
 				ByAuthString: true,
 			}
 		}
 	case 1604:
 		{
-			parser.yyVAL.item = &ast.AuthOption{
-				HashString: yyS[yypt-0].item.(string),
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.AuthOption{
+				HashString: yyS.item[yypt-0].(string),
 			}
 		}
 	case 1605:
 		{
-			parser.yyVAL.item = &ast.AuthOption{
-				HashString: yyS[yypt-0].item.(string),
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.AuthOption{
+				HashString: yyS.item[yypt-0].(string),
 			}
 		}
 	case 1606:
 		{
-			parser.yyVAL.item = yyS[yypt-0].ident
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.ident[yypt-0]
 		}
 	case 1607:
 		{
-			role := yyS[yypt-0].item.(*auth.RoleIdentity)
+			role := yyS.item[yypt-0].(*auth.RoleIdentity)
 			roleSpec := &ast.UserSpec{
 				User: &auth.UserIdentity{
 					Username: role.Username,
@@ -14512,302 +15636,359 @@ yynewstate:
 				},
 				IsRole: true,
 			}
-			parser.yyVAL.item = roleSpec
+			yyVAL.typ = itemType
+			yyVAL.item = roleSpec
 		}
 	case 1608:
 		{
-			parser.yyVAL.item = []*ast.UserSpec{yyS[yypt-0].item.(*ast.UserSpec)}
+			yyVAL.typ = itemType
+			yyVAL.item = []*ast.UserSpec{yyS.item[yypt-0].(*ast.UserSpec)}
 		}
 	case 1609:
 		{
-			parser.yyVAL.item = append(yyS[yypt-2].item.([]*ast.UserSpec), yyS[yypt-0].item.(*ast.UserSpec))
+			yyVAL.typ = itemType
+			yyVAL.item = append(yyS.item[yypt-2].([]*ast.UserSpec), yyS.item[yypt-0].(*ast.UserSpec))
 		}
 	case 1610:
 		{
-			startOffset := parser.startOffset(&yyS[yypt-2])
-			endOffset := parser.startOffset(&yyS[yypt-1])
-			selStmt := yyS[yypt-2].statement.(*ast.SelectStmt)
+			startOffset := yyS.offset[yypt-2]
+			endOffset := yyS.offset[yypt-1]
+			selStmt := yyS.statement[yypt-2].(*ast.SelectStmt)
 			selStmt.SetText(strings.TrimSpace(parser.src[startOffset:endOffset]))
 
-			startOffset = parser.startOffset(&yyS[yypt])
-			hintedSelStmt := yyS[yypt-0].statement.(*ast.SelectStmt)
+			startOffset = yyS.offset[yypt]
+			hintedSelStmt := yyS.statement[yypt-0].(*ast.SelectStmt)
 			hintedSelStmt.SetText(strings.TrimSpace(parser.src[startOffset:]))
 
 			x := &ast.CreateBindingStmt{
 				OriginSel:   selStmt,
 				HintedSel:   hintedSelStmt,
-				GlobalScope: yyS[yypt-5].item.(bool),
+				GlobalScope: yyS.item[yypt-5].(bool),
 			}
 
-			parser.yyVAL.statement = x
+			yyVAL.typ = statementType
+			yyVAL.statement = x
 		}
 	case 1611:
 		{
-			startOffset := parser.startOffset(&yyS[yypt])
-			selStmt := yyS[yypt-0].statement.(*ast.SelectStmt)
+			startOffset := yyS.offset[yypt]
+			selStmt := yyS.statement[yypt-0].(*ast.SelectStmt)
 			selStmt.SetText(strings.TrimSpace(parser.src[startOffset:]))
 
 			x := &ast.DropBindingStmt{
 				OriginSel:   selStmt,
-				GlobalScope: yyS[yypt-3].item.(bool),
+				GlobalScope: yyS.item[yypt-3].(bool),
 			}
 
-			parser.yyVAL.statement = x
+			yyVAL.typ = statementType
+			yyVAL.statement = x
 		}
 	case 1612:
 		{
-			parser.yyVAL.statement = &ast.GrantStmt{
-				Privs:      yyS[yypt-6].item.([]*ast.PrivElem),
-				ObjectType: yyS[yypt-4].item.(ast.ObjectTypeType),
-				Level:      yyS[yypt-3].item.(*ast.GrantLevel),
-				Users:      yyS[yypt-1].item.([]*ast.UserSpec),
-				WithGrant:  yyS[yypt-0].item.(bool),
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.GrantStmt{
+				Privs:      yyS.item[yypt-6].([]*ast.PrivElem),
+				ObjectType: yyS.item[yypt-4].(ast.ObjectTypeType),
+				Level:      yyS.item[yypt-3].(*ast.GrantLevel),
+				Users:      yyS.item[yypt-1].([]*ast.UserSpec),
+				WithGrant:  yyS.item[yypt-0].(bool),
 			}
 		}
 	case 1613:
 		{
-			parser.yyVAL.statement = &ast.GrantRoleStmt{
-				Roles: yyS[yypt-2].item.([]*auth.RoleIdentity),
-				Users: yyS[yypt-0].item.([]*auth.UserIdentity),
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.GrantRoleStmt{
+				Roles: yyS.item[yypt-2].([]*auth.RoleIdentity),
+				Users: yyS.item[yypt-0].([]*auth.UserIdentity),
 			}
 		}
 	case 1614:
 		{
-			parser.yyVAL.item = false
+			yyVAL.typ = itemType
+			yyVAL.item = false
 		}
 	case 1615:
 		{
-			parser.yyVAL.item = true
+			yyVAL.typ = itemType
+			yyVAL.item = true
 		}
 	case 1616:
 		{
-			parser.yyVAL.item = false
+			yyVAL.typ = itemType
+			yyVAL.item = false
 		}
 	case 1617:
 		{
-			parser.yyVAL.item = false
+			yyVAL.typ = itemType
+			yyVAL.item = false
 		}
 	case 1618:
 		{
-			parser.yyVAL.item = false
+			yyVAL.typ = itemType
+			yyVAL.item = false
 		}
 	case 1619:
 		{
-			parser.yyVAL.item = false
+			yyVAL.typ = itemType
+			yyVAL.item = false
 		}
 	case 1620:
 		{
-			parser.yyVAL.item = &ast.PrivElem{
-				Priv: yyS[yypt-0].item.(mysql.PrivilegeType),
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.PrivElem{
+				Priv: yyS.item[yypt-0].(mysql.PrivilegeType),
 			}
 		}
 	case 1621:
 		{
-			parser.yyVAL.item = &ast.PrivElem{
-				Priv: yyS[yypt-3].item.(mysql.PrivilegeType),
-				Cols: yyS[yypt-1].item.([]*ast.ColumnName),
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.PrivElem{
+				Priv: yyS.item[yypt-3].(mysql.PrivilegeType),
+				Cols: yyS.item[yypt-1].([]*ast.ColumnName),
 			}
 		}
 	case 1622:
 		{
-			parser.yyVAL.item = []*ast.PrivElem{yyS[yypt-0].item.(*ast.PrivElem)}
+			yyVAL.typ = itemType
+			yyVAL.item = []*ast.PrivElem{yyS.item[yypt-0].(*ast.PrivElem)}
 		}
 	case 1623:
 		{
-			parser.yyVAL.item = append(yyS[yypt-2].item.([]*ast.PrivElem), yyS[yypt-0].item.(*ast.PrivElem))
+			yyVAL.typ = itemType
+			yyVAL.item = append(yyS.item[yypt-2].([]*ast.PrivElem), yyS.item[yypt-0].(*ast.PrivElem))
 		}
 	case 1624:
 		{
-			parser.yyVAL.item = mysql.AllPriv
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.AllPriv
 		}
 	case 1625:
 		{
-			parser.yyVAL.item = mysql.AllPriv
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.AllPriv
 		}
 	case 1626:
 		{
-			parser.yyVAL.item = mysql.AlterPriv
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.AlterPriv
 		}
 	case 1627:
 		{
-			parser.yyVAL.item = mysql.CreatePriv
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.CreatePriv
 		}
 	case 1628:
 		{
-			parser.yyVAL.item = mysql.CreateUserPriv
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.CreateUserPriv
 		}
 	case 1629:
 		{
-			parser.yyVAL.item = mysql.TriggerPriv
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.TriggerPriv
 		}
 	case 1630:
 		{
-			parser.yyVAL.item = mysql.DeletePriv
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.DeletePriv
 		}
 	case 1631:
 		{
-			parser.yyVAL.item = mysql.DropPriv
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.DropPriv
 		}
 	case 1632:
 		{
-			parser.yyVAL.item = mysql.ProcessPriv
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.ProcessPriv
 		}
 	case 1633:
 		{
-			parser.yyVAL.item = mysql.ExecutePriv
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.ExecutePriv
 		}
 	case 1634:
 		{
-			parser.yyVAL.item = mysql.IndexPriv
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.IndexPriv
 		}
 	case 1635:
 		{
-			parser.yyVAL.item = mysql.InsertPriv
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.InsertPriv
 		}
 	case 1636:
 		{
-			parser.yyVAL.item = mysql.SelectPriv
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.SelectPriv
 		}
 	case 1637:
 		{
-			parser.yyVAL.item = mysql.SuperPriv
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.SuperPriv
 		}
 	case 1638:
 		{
-			parser.yyVAL.item = mysql.ShowDBPriv
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.ShowDBPriv
 		}
 	case 1639:
 		{
-			parser.yyVAL.item = mysql.UpdatePriv
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.UpdatePriv
 		}
 	case 1640:
 		{
-			parser.yyVAL.item = mysql.GrantPriv
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.GrantPriv
 		}
 	case 1641:
 		{
-			parser.yyVAL.item = mysql.ReferencesPriv
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.ReferencesPriv
 		}
 	case 1642:
 		{
-			parser.yyVAL.item = mysql.PrivilegeType(0)
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.PrivilegeType(0)
 		}
 	case 1643:
 		{
-			parser.yyVAL.item = mysql.PrivilegeType(0)
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.PrivilegeType(0)
 		}
 	case 1644:
 		{
-			parser.yyVAL.item = mysql.PrivilegeType(0)
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.PrivilegeType(0)
 		}
 	case 1645:
 		{
-			parser.yyVAL.item = mysql.PrivilegeType(0)
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.PrivilegeType(0)
 		}
 	case 1646:
 		{
-			parser.yyVAL.item = mysql.PrivilegeType(0)
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.PrivilegeType(0)
 		}
 	case 1647:
 		{
-			parser.yyVAL.item = mysql.PrivilegeType(0)
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.PrivilegeType(0)
 		}
 	case 1648:
 		{
-			parser.yyVAL.item = mysql.CreateViewPriv
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.CreateViewPriv
 		}
 	case 1649:
 		{
-			parser.yyVAL.item = mysql.ShowViewPriv
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.ShowViewPriv
 		}
 	case 1650:
 		{
-			parser.yyVAL.item = mysql.CreateRolePriv
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.CreateRolePriv
 		}
 	case 1651:
 		{
-			parser.yyVAL.item = mysql.DropRolePriv
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.DropRolePriv
 		}
 	case 1652:
 		{
-			parser.yyVAL.item = mysql.PrivilegeType(0)
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.PrivilegeType(0)
 		}
 	case 1653:
 		{
-			parser.yyVAL.item = mysql.PrivilegeType(0)
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.PrivilegeType(0)
 		}
 	case 1654:
 		{
-			parser.yyVAL.item = mysql.PrivilegeType(0)
+			yyVAL.typ = itemType
+			yyVAL.item = mysql.PrivilegeType(0)
 		}
 	case 1655:
 		{
-			parser.yyVAL.item = ast.ObjectTypeNone
+			yyVAL.typ = itemType
+			yyVAL.item = ast.ObjectTypeNone
 		}
 	case 1656:
 		{
-			parser.yyVAL.item = ast.ObjectTypeTable
+			yyVAL.typ = itemType
+			yyVAL.item = ast.ObjectTypeTable
 		}
 	case 1657:
 		{
-			parser.yyVAL.item = &ast.GrantLevel{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.GrantLevel{
 				Level: ast.GrantLevelDB,
 			}
 		}
 	case 1658:
 		{
-			parser.yyVAL.item = &ast.GrantLevel{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.GrantLevel{
 				Level: ast.GrantLevelGlobal,
 			}
 		}
 	case 1659:
 		{
-			parser.yyVAL.item = &ast.GrantLevel{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.GrantLevel{
 				Level:  ast.GrantLevelDB,
-				DBName: yyS[yypt-2].ident,
+				DBName: yyS.ident[yypt-2],
 			}
 		}
 	case 1660:
 		{
-			parser.yyVAL.item = &ast.GrantLevel{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.GrantLevel{
 				Level:     ast.GrantLevelTable,
-				DBName:    yyS[yypt-2].ident,
-				TableName: yyS[yypt-0].ident,
+				DBName:    yyS.ident[yypt-2],
+				TableName: yyS.ident[yypt-0],
 			}
 		}
 	case 1661:
 		{
-			parser.yyVAL.item = &ast.GrantLevel{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.GrantLevel{
 				Level:     ast.GrantLevelTable,
-				TableName: yyS[yypt-0].ident,
+				TableName: yyS.ident[yypt-0],
 			}
 		}
 	case 1662:
 		{
-			parser.yyVAL.statement = &ast.RevokeStmt{
-				Privs:      yyS[yypt-5].item.([]*ast.PrivElem),
-				ObjectType: yyS[yypt-3].item.(ast.ObjectTypeType),
-				Level:      yyS[yypt-2].item.(*ast.GrantLevel),
-				Users:      yyS[yypt-0].item.([]*ast.UserSpec),
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.RevokeStmt{
+				Privs:      yyS.item[yypt-5].([]*ast.PrivElem),
+				ObjectType: yyS.item[yypt-3].(ast.ObjectTypeType),
+				Level:      yyS.item[yypt-2].(*ast.GrantLevel),
+				Users:      yyS.item[yypt-0].([]*ast.UserSpec),
 			}
 		}
 	case 1663:
 		{
-			parser.yyVAL.statement = &ast.RevokeRoleStmt{
-				Roles: yyS[yypt-2].item.([]*auth.RoleIdentity),
-				Users: yyS[yypt-0].item.([]*auth.UserIdentity),
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.RevokeRoleStmt{
+				Roles: yyS.item[yypt-2].([]*auth.RoleIdentity),
+				Users: yyS.item[yypt-0].([]*auth.UserIdentity),
 			}
 		}
 	case 1664:
 		{
 			x := &ast.LoadDataStmt{
-				Path:               yyS[yypt-10].ident,
-				OnDuplicate:        yyS[yypt-9].item.(ast.OnDuplicateKeyHandlingType),
-				Table:              yyS[yypt-6].item.(*ast.TableName),
-				ColumnsAndUserVars: yyS[yypt-1].item.([]*ast.ColumnNameOrUserVar),
-				IgnoreLines:        yyS[yypt-2].item.(uint64),
+				Path:               yyS.ident[yypt-10],
+				OnDuplicate:        yyS.item[yypt-9].(ast.OnDuplicateKeyHandlingType),
+				Table:              yyS.item[yypt-6].(*ast.TableName),
+				ColumnsAndUserVars: yyS.item[yypt-1].([]*ast.ColumnNameOrUserVar),
+				IgnoreLines:        yyS.item[yypt-2].(uint64),
 			}
-			if yyS[yypt-12].item != nil {
+			if yyS.item[yypt-12] != nil {
 				x.IsLocal = true
 				// See https://dev.mysql.com/doc/refman/5.7/en/load-data.html#load-data-duplicate-key-handling
 				// If you do not specify IGNORE or REPLACE modifier , then we set default behavior to IGNORE when LOCAL modifier is specified
@@ -14815,14 +15996,14 @@ yynewstate:
 					x.OnDuplicate = ast.OnDuplicateKeyHandlingIgnore
 				}
 			}
-			if yyS[yypt-4].item != nil {
-				x.FieldsInfo = yyS[yypt-4].item.(*ast.FieldsClause)
+			if yyS.item[yypt-4] != nil {
+				x.FieldsInfo = yyS.item[yypt-4].(*ast.FieldsClause)
 			}
-			if yyS[yypt-3].item != nil {
-				x.LinesInfo = yyS[yypt-3].item.(*ast.LinesClause)
+			if yyS.item[yypt-3] != nil {
+				x.LinesInfo = yyS.item[yypt-3].(*ast.LinesClause)
 			}
-			if yyS[yypt-0].item != nil {
-				x.ColumnAssignments = yyS[yypt-0].item.([]*ast.Assignment)
+			if yyS.item[yypt-0] != nil {
+				x.ColumnAssignments = yyS.item[yypt-0].([]*ast.Assignment)
 			}
 			columns := []*ast.ColumnName{}
 			for _, v := range x.ColumnsAndUserVars {
@@ -14832,28 +16013,34 @@ yynewstate:
 			}
 			x.Columns = columns
 
-			parser.yyVAL.statement = x
+			yyVAL.typ = statementType
+			yyVAL.statement = x
 		}
 	case 1665:
 		{
-			parser.yyVAL.item = uint64(0)
+			yyVAL.typ = itemType
+			yyVAL.item = uint64(0)
 		}
 	case 1666:
 		{
-			parser.yyVAL.item = getUint64FromNUM(yyS[yypt-1].item)
+			yyVAL.typ = itemType
+			yyVAL.item = getUint64FromNUM(yyS.item[yypt-1])
 		}
 	case 1669:
 		{
-			parser.yyVAL.item = nil
+			yyVAL.typ = itemType
+			yyVAL.item = nil
 		}
 	case 1670:
 		{
-			parser.yyVAL.item = yyS[yypt-0].ident
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.ident[yypt-0]
 		}
 	case 1671:
 		{
 			escape := "\\"
-			parser.yyVAL.item = &ast.FieldsClause{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.FieldsClause{
 				Terminated: "\t",
 				Escaped:    escape[0],
 			}
@@ -14864,7 +16051,7 @@ yynewstate:
 				Terminated: "\t",
 				Escaped:    []byte("\\")[0],
 			}
-			fieldItems := yyS[yypt-0].item.([]*ast.FieldItem)
+			fieldItems := yyS.item[yypt-0].([]*ast.FieldItem)
 			for _, item := range fieldItems {
 				switch item.Type {
 				case ast.Terminated:
@@ -14883,204 +16070,240 @@ yynewstate:
 					fieldsClause.Escaped = escaped
 				}
 			}
-			parser.yyVAL.item = fieldsClause
+			yyVAL.typ = itemType
+			yyVAL.item = fieldsClause
 		}
 	case 1675:
 		{
-			fieldItems := yyS[yypt-1].item.([]*ast.FieldItem)
-			parser.yyVAL.item = append(fieldItems, yyS[yypt-0].item.(*ast.FieldItem))
+			fieldItems := yyS.item[yypt-1].([]*ast.FieldItem)
+			yyVAL.typ = itemType
+			yyVAL.item = append(fieldItems, yyS.item[yypt-0].(*ast.FieldItem))
 		}
 	case 1676:
 		{
 			fieldItems := make([]*ast.FieldItem, 1, 1)
-			fieldItems[0] = yyS[yypt-0].item.(*ast.FieldItem)
-			parser.yyVAL.item = fieldItems
+			fieldItems[0] = yyS.item[yypt-0].(*ast.FieldItem)
+			yyVAL.typ = itemType
+			yyVAL.item = fieldItems
 		}
 	case 1677:
 		{
-			parser.yyVAL.item = &ast.FieldItem{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.FieldItem{
 				Type:  ast.Terminated,
-				Value: yyS[yypt-0].item.(string),
+				Value: yyS.item[yypt-0].(string),
 			}
 		}
 	case 1678:
 		{
-			str := yyS[yypt-0].item.(string)
+			str := yyS.item[yypt-0].(string)
 			if str != "\\" && len(str) > 1 {
 				yylex.AppendError(ErrWrongFieldTerminators.GenWithStackByArgs())
 				return 1
 			}
-			parser.yyVAL.item = &ast.FieldItem{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.FieldItem{
 				Type:  ast.Enclosed,
 				Value: str,
 			}
 		}
 	case 1679:
 		{
-			str := yyS[yypt-0].item.(string)
+			str := yyS.item[yypt-0].(string)
 			if str != "\\" && len(str) > 1 {
 				yylex.AppendError(ErrWrongFieldTerminators.GenWithStackByArgs())
 				return 1
 			}
-			parser.yyVAL.item = &ast.FieldItem{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.FieldItem{
 				Type:  ast.Enclosed,
 				Value: str,
 			}
 		}
 	case 1680:
 		{
-			str := yyS[yypt-0].item.(string)
+			str := yyS.item[yypt-0].(string)
 			if str != "\\" && len(str) > 1 {
 				yylex.AppendError(ErrWrongFieldTerminators.GenWithStackByArgs())
 				return 1
 			}
-			parser.yyVAL.item = &ast.FieldItem{
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.FieldItem{
 				Type:  ast.Escaped,
 				Value: str,
 			}
 		}
 	case 1681:
 		{
-			parser.yyVAL.item = yyS[yypt-0].ident
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.ident[yypt-0]
 		}
 	case 1682:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item.(ast.BinaryLiteral).ToString()
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0].(ast.BinaryLiteral).ToString()
 		}
 	case 1683:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item.(ast.BinaryLiteral).ToString()
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0].(ast.BinaryLiteral).ToString()
 		}
 	case 1684:
 		{
-			parser.yyVAL.item = &ast.LinesClause{Terminated: "\n"}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.LinesClause{Terminated: "\n"}
 		}
 	case 1685:
 		{
-			parser.yyVAL.item = &ast.LinesClause{Starting: yyS[yypt-1].item.(string), Terminated: yyS[yypt-0].item.(string)}
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.LinesClause{Starting: yyS.item[yypt-1].(string), Terminated: yyS.item[yypt-0].(string)}
 		}
 	case 1686:
 		{
-			parser.yyVAL.item = ""
+			yyVAL.typ = itemType
+			yyVAL.item = ""
 		}
 	case 1687:
 		{
-			parser.yyVAL.item = yyS[yypt-0].ident
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.ident[yypt-0]
 		}
 	case 1688:
 		{
-			parser.yyVAL.item = "\n"
+			yyVAL.typ = itemType
+			yyVAL.item = "\n"
 		}
 	case 1689:
 		{
-			parser.yyVAL.item = yyS[yypt-0].ident
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.ident[yypt-0]
 		}
 	case 1690:
 		{
-			parser.yyVAL.item = nil
+			yyVAL.typ = itemType
+			yyVAL.item = nil
 		}
 	case 1691:
 		{
-			parser.yyVAL.item = yyS[yypt-0].item
+			yyVAL.typ = itemType
+			yyVAL.item = yyS.item[yypt-0]
 		}
 	case 1692:
 		{
-			l := yyS[yypt-2].item.([]*ast.Assignment)
-			parser.yyVAL.item = append(l, yyS[yypt-0].item.(*ast.Assignment))
+			l := yyS.item[yypt-2].([]*ast.Assignment)
+			yyVAL.typ = itemType
+			yyVAL.item = append(l, yyS.item[yypt-0].(*ast.Assignment))
 		}
 	case 1693:
 		{
-			parser.yyVAL.item = []*ast.Assignment{yyS[yypt-0].item.(*ast.Assignment)}
+			yyVAL.typ = itemType
+			yyVAL.item = []*ast.Assignment{yyS.item[yypt-0].(*ast.Assignment)}
 		}
 	case 1694:
 		{
-			parser.yyVAL.item = &ast.Assignment{
-				Column: yyS[yypt-2].expr.(*ast.ColumnNameExpr).Name,
-				Expr:   yyS[yypt-0].expr,
+			yyVAL.typ = itemType
+			yyVAL.item = &ast.Assignment{
+				Column: yyS.expr[yypt-2].(*ast.ColumnNameExpr).Name,
+				Expr:   yyS.expr[yypt-0],
 			}
 
 		}
 	case 1695:
 		{
-			parser.yyVAL.statement = &ast.UnlockTablesStmt{}
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.UnlockTablesStmt{}
 		}
 	case 1696:
 		{
-			parser.yyVAL.statement = &ast.LockTablesStmt{
-				TableLocks: yyS[yypt-0].item.([]ast.TableLock),
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.LockTablesStmt{
+				TableLocks: yyS.item[yypt-0].([]ast.TableLock),
 			}
 		}
 	case 1699:
 		{
-			parser.yyVAL.item = ast.TableLock{
-				Table: yyS[yypt-1].item.(*ast.TableName),
-				Type:  yyS[yypt-0].item.(model.TableLockType),
+			yyVAL.typ = itemType
+			yyVAL.item = ast.TableLock{
+				Table: yyS.item[yypt-1].(*ast.TableName),
+				Type:  yyS.item[yypt-0].(model.TableLockType),
 			}
 		}
 	case 1700:
 		{
-			parser.yyVAL.item = model.TableLockRead
+			yyVAL.typ = itemType
+			yyVAL.item = model.TableLockRead
 		}
 	case 1701:
 		{
-			parser.yyVAL.item = model.TableLockReadLocal
+			yyVAL.typ = itemType
+			yyVAL.item = model.TableLockReadLocal
 		}
 	case 1702:
 		{
-			parser.yyVAL.item = model.TableLockWrite
+			yyVAL.typ = itemType
+			yyVAL.item = model.TableLockWrite
 		}
 	case 1703:
 		{
-			parser.yyVAL.item = model.TableLockWriteLocal
+			yyVAL.typ = itemType
+			yyVAL.item = model.TableLockWriteLocal
 		}
 	case 1704:
 		{
-			parser.yyVAL.item = []ast.TableLock{yyS[yypt-0].item.(ast.TableLock)}
+			yyVAL.typ = itemType
+			yyVAL.item = []ast.TableLock{yyS.item[yypt-0].(ast.TableLock)}
 		}
 	case 1705:
 		{
-			parser.yyVAL.item = append(yyS[yypt-2].item.([]ast.TableLock), yyS[yypt-0].item.(ast.TableLock))
+			yyVAL.typ = itemType
+			yyVAL.item = append(yyS.item[yypt-2].([]ast.TableLock), yyS.item[yypt-0].(ast.TableLock))
 		}
 	case 1706:
 		{
-			parser.yyVAL.statement = &ast.KillStmt{
-				ConnectionID:  getUint64FromNUM(yyS[yypt-0].item),
-				TiDBExtension: yyS[yypt-1].item.(bool),
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.KillStmt{
+				ConnectionID:  getUint64FromNUM(yyS.item[yypt-0]),
+				TiDBExtension: yyS.item[yypt-1].(bool),
 			}
 		}
 	case 1707:
 		{
-			parser.yyVAL.statement = &ast.KillStmt{
-				ConnectionID:  getUint64FromNUM(yyS[yypt-0].item),
-				TiDBExtension: yyS[yypt-2].item.(bool),
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.KillStmt{
+				ConnectionID:  getUint64FromNUM(yyS.item[yypt-0]),
+				TiDBExtension: yyS.item[yypt-2].(bool),
 			}
 		}
 	case 1708:
 		{
-			parser.yyVAL.statement = &ast.KillStmt{
-				ConnectionID:  getUint64FromNUM(yyS[yypt-0].item),
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.KillStmt{
+				ConnectionID:  getUint64FromNUM(yyS.item[yypt-0]),
 				Query:         true,
-				TiDBExtension: yyS[yypt-2].item.(bool),
+				TiDBExtension: yyS.item[yypt-2].(bool),
 			}
 		}
 	case 1709:
 		{
-			parser.yyVAL.item = false
+			yyVAL.typ = itemType
+			yyVAL.item = false
 		}
 	case 1710:
 		{
-			parser.yyVAL.item = true
+			yyVAL.typ = itemType
+			yyVAL.item = true
 		}
 	case 1711:
 		{
-			parser.yyVAL.statement = &ast.LoadStatsStmt{
-				Path: yyS[yypt-0].ident,
+			yyVAL.typ = statementType
+			yyVAL.statement = &ast.LoadStatsStmt{
+				Path: yyS.ident[yypt-0],
 			}
 		}
 
 	}
 
-	if yyEx != nil && yyEx.Reduced(r, exState, &parser.yyVAL) {
+	if yyEx != nil && yyEx.Reduced(r, exState, &yyVAL) {
 		return -1
 	}
 	goto yystack /* stack new state and value */

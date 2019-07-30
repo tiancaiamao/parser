@@ -1973,8 +1973,8 @@ ColumnOption:
 	}
 |	GeneratedAlways "AS" '(' Expression ')' VirtualOrStored
 	{
-		startOffset := parser.startOffset(&yyS[yypt-2])
-		endOffset := parser.endOffset(&yyS[yypt-1])
+		startOffset := yyS.offset[yypt-2]
+		endOffset := yyS.offset[yypt-1]
 		expr := $4
 		expr.SetText(parser.src[startOffset:endOffset])
 
@@ -2818,7 +2818,7 @@ LikeTableWithOrWithoutParen:
 CreateViewStmt:
     "CREATE" OrReplace ViewAlgorithm ViewDefiner ViewSQLSecurity "VIEW" ViewName ViewFieldList "AS" SelectStmt ViewCheckOption
     {
-		startOffset := parser.startOffset(&yyS[yypt-1])
+		startOffset := yyS.offset[yypt-1]
 		selStmt := $10.(*ast.SelectStmt)
 		selStmt.SetText(strings.TrimSpace(parser.src[startOffset:]))
 		x := &ast.CreateViewStmt {
@@ -2834,7 +2834,7 @@ CreateViewStmt:
 		}
 		if $11 !=nil {
 		    x.CheckOption = $11.(model.ViewCheckOption)
-		    endOffset := parser.startOffset(&yyS[yypt])
+		    endOffset := yyS.offset[yypt]
 		    selStmt.SetText(strings.TrimSpace(parser.src[startOffset:endOffset]))
 		} else {
 		    x.CheckOption = model.CheckOptionCascaded
@@ -3115,7 +3115,7 @@ TraceStmt:
 			Stmt:	$2,
 			Format: "json",
 		}
-		startOffset := parser.startOffset(&yyS[yypt])
+		startOffset := yyS.offset[yypt]
 		$2.SetText(string(parser.src[startOffset:]))
 	}
 |	"TRACE" "FORMAT" "=" stringLit TraceableStmt
@@ -3124,7 +3124,7 @@ TraceStmt:
 			Stmt: $5,
 			Format: $4,
 		}
-		startOffset := parser.startOffset(&yyS[yypt])
+		startOffset := yyS.offset[yypt]
 		$5.SetText(string(parser.src[startOffset:]))
 	}
 
@@ -3577,7 +3577,7 @@ FieldList:
 	Field
 	{
 		field := $1.(*ast.SelectField)
-		field.Offset = parser.startOffset(&yyS[yypt])
+		field.Offset = yyS.offset[yypt]
 		$$ = []*ast.SelectField{field}
 	}
 |	FieldList ',' Field
@@ -3586,11 +3586,11 @@ FieldList:
 		fl := $1.([]*ast.SelectField)
 		last := fl[len(fl)-1]
 		if last.Expr != nil && last.AsName.O == "" {
-			lastEnd := parser.endOffset(&yyS[yypt-1])
+			lastEnd := parser.endOffset(yyS.offset[yypt-1])
 			last.SetText(parser.src[last.Offset:lastEnd])
 		}
 		newField := $3.(*ast.SelectField)
-		newField.Offset = parser.startOffset(&yyS[yypt])
+		newField.Offset = yyS.offset[yypt]
 		$$ = append(fl, newField)
 	}
 
@@ -3712,7 +3712,10 @@ IndexTypeOpt:
 
 /**********************************Identifier********************************************/
 Identifier:
-identifier | UnReservedKeyword | NotKeywordToken | TiDBKeyword
+identifier {
+  $$ = $1
+}
+| UnReservedKeyword | NotKeywordToken | TiDBKeyword
 
 UnReservedKeyword:
  "ACTION" | "ASCII" | "AUTO_INCREMENT" | "AFTER" | "ALWAYS" | "AVG" | "BEGIN" | "BIT" | "BOOL" | "BOOLEAN" | "BTREE" | "BYTE" | "CLEANUP" | "CHARSET" %prec charsetKwd
@@ -4170,7 +4173,7 @@ SimpleExpr:
 |	Literal
 |	paramMarker
 	{
-		$$ = ast.NewParamMarkerExpr(yyS[yypt].offset)
+		$$ = ast.NewParamMarkerExpr(yyS.offset[yypt])
 	}
 |	Variable
 |	SumExpr
@@ -4200,8 +4203,8 @@ SimpleExpr:
 	}
 |	SubSelect
 |	'(' Expression ')' {
-		startOffset := parser.startOffset(&yyS[yypt-1])
-		endOffset := parser.endOffset(&yyS[yypt])
+		startOffset := yyS.offset[yypt-1]
+		endOffset := parser.endOffset(yyS.offset[yypt])
 		expr := $2
 		expr.SetText(parser.src[startOffset:endOffset])
 		$$ = &ast.ParenthesesExpr{Expr: expr}
@@ -5243,7 +5246,7 @@ SelectStmtFromDualTable:
 		st := $1.(*ast.SelectStmt)
 		lastField := st.Fields.Fields[len(st.Fields.Fields)-1]
 		if lastField.Expr != nil && lastField.AsName.O == "" {
-			lastEnd := yyS[yypt-1].offset-1
+			lastEnd := yyS.offset[yypt-1]-1
 			lastField.SetText(parser.src[lastField.Offset:lastEnd])
 		}
 		if $3 != nil {
@@ -5259,7 +5262,7 @@ SelectStmtFromTable:
 		st.From = $3.(*ast.TableRefsClause)
 		lastField := st.Fields.Fields[len(st.Fields.Fields)-1]
 		if lastField.Expr != nil && lastField.AsName.O == "" {
-			lastEnd := parser.endOffset(&yyS[yypt-5])
+			lastEnd := parser.endOffset(yyS.offset[yypt-5])
 			lastField.SetText(parser.src[lastField.Offset:lastEnd])
 		}
 		if $4 != nil {
@@ -5287,11 +5290,11 @@ SelectStmt:
 			src := parser.src
 			var lastEnd int
 			if $2 != nil {
-				lastEnd = yyS[yypt-2].offset-1
+          lastEnd = yyS.offset[yypt-2]-1
 			} else if $3 != nil {
-				lastEnd = yyS[yypt-1].offset-1
+          lastEnd = yyS.offset[yypt-1]-1
 			} else if $4 != ast.SelectLockNone {
-				lastEnd = yyS[yypt].offset-1
+          lastEnd = yyS.offset[yypt]-1
 			} else {
 				lastEnd = len(src)
 				if src[lastEnd-1] == ';' {
@@ -5468,7 +5471,7 @@ WindowFrameStart:
 	}
 |	paramMarker "PRECEDING"
 	{
-		$$ = ast.FrameBound{Type: ast.Preceding, Expr: ast.NewParamMarkerExpr(yyS[yypt].offset),}
+		$$ = ast.FrameBound{Type: ast.Preceding, Expr: ast.NewParamMarkerExpr(yyS.offset[yypt]),}
 	}
 |	"INTERVAL" Expression TimeUnit "PRECEDING"
 	{
@@ -5500,7 +5503,7 @@ WindowFrameBound:
 	}
 |	paramMarker "FOLLOWING"
 	{
-		$$ = ast.FrameBound{Type: ast.Following, Expr: ast.NewParamMarkerExpr(yyS[yypt].offset),}
+		$$ = ast.FrameBound{Type: ast.Following, Expr: ast.NewParamMarkerExpr(yyS.offset[yypt]),}
 	}
 |	"INTERVAL" Expression TimeUnit "FOLLOWING"
 	{
@@ -5700,7 +5703,7 @@ TableFactor:
 |	'(' SelectStmt ')' TableAsName
 	{
 		st := $2.(*ast.SelectStmt)
-		endOffset := parser.endOffset(&yyS[yypt-1])
+		endOffset := parser.endOffset(yyS.offset[yypt-1])
 		parser.setLastSelectFieldText(st, endOffset)
 		$$ = &ast.TableSource{Source: $2.(*ast.SelectStmt), AsName: $4.(model.CIStr)}
 	}
@@ -5900,7 +5903,7 @@ LimitOption:
 	}
 |	paramMarker
 	{
-		$$ = ast.NewParamMarkerExpr(yyS[yypt].offset)
+		$$ = ast.NewParamMarkerExpr(yyS.offset[yypt])
 	}
 
 SelectStmtLimit:
@@ -6094,11 +6097,11 @@ SubSelect:
 	'(' SelectStmt ')'
 	{
 		s := $2.(*ast.SelectStmt)
-		endOffset := parser.endOffset(&yyS[yypt])
+		endOffset := parser.endOffset(yyS.offset[yypt])
 		parser.setLastSelectFieldText(s, endOffset)
 		src := parser.src
 		// See the implementation of yyParse function
-		s.SetText(src[yyS[yypt-1].offset:yyS[yypt].offset])
+      s.SetText(src[yyS.offset[yypt-1]:yyS.offset[yypt]])
 		$$ = &ast.SubqueryExpr{Query: s}
 	}
 |	'(' UnionStmt ')'
@@ -6106,7 +6109,7 @@ SubSelect:
 		s := $2.(*ast.UnionStmt)
 		src := parser.src
 		// See the implementation of yyParse function
-		s.SetText(src[yyS[yypt-1].offset:yyS[yypt].offset])
+      s.SetText(src[yyS.offset[yypt-1]:yyS.offset[yypt]])
 		$$ = &ast.SubqueryExpr{Query: s}
 	}
 
@@ -6133,7 +6136,7 @@ UnionStmt:
 		union := $1.(*ast.UnionStmt)
 		st.IsAfterUnionDistinct = $3.(bool)
 		lastSelect := union.SelectList.Selects[len(union.SelectList.Selects)-1]
-		endOffset := parser.endOffset(&yyS[yypt-5])
+		endOffset := parser.endOffset(yyS.offset[yypt-5])
 		parser.setLastSelectFieldText(lastSelect, endOffset)
 		union.SelectList.Selects = append(union.SelectList.Selects, st)
 		if $5 != nil {
@@ -6154,7 +6157,7 @@ UnionStmt:
 		union := $1.(*ast.UnionStmt)
 		st.IsAfterUnionDistinct = $3.(bool)
 		lastSelect := union.SelectList.Selects[len(union.SelectList.Selects)-1]
-		endOffset := parser.endOffset(&yyS[yypt-5])
+		endOffset := parser.endOffset(yyS.offset[yypt-5])
 		parser.setLastSelectFieldText(lastSelect, endOffset)
 		union.SelectList.Selects = append(union.SelectList.Selects, st)
 		if $5 != nil {
@@ -6175,7 +6178,7 @@ UnionStmt:
 		union := $1.(*ast.UnionStmt)
 		st.IsAfterUnionDistinct = $3.(bool)
 		lastSelect := union.SelectList.Selects[len(union.SelectList.Selects)-1]
-		endOffset := parser.endOffset(&yyS[yypt-5])
+		endOffset := parser.endOffset(yyS.offset[yypt-5])
 		parser.setLastSelectFieldText(lastSelect, endOffset)
 		union.SelectList.Selects = append(union.SelectList.Selects, st)
 		if $5 != nil {
@@ -6193,12 +6196,12 @@ UnionStmt:
 	{
 		union := $1.(*ast.UnionStmt)
 		lastSelect := union.SelectList.Selects[len(union.SelectList.Selects)-1]
-		endOffset := parser.endOffset(&yyS[yypt-6])
+		endOffset := parser.endOffset(yyS.offset[yypt-6])
 		parser.setLastSelectFieldText(lastSelect, endOffset)
 		st := $5.(*ast.SelectStmt)
 		st.IsInBraces = true
 		st.IsAfterUnionDistinct = $3.(bool)
-		endOffset = parser.endOffset(&yyS[yypt-2])
+		endOffset = parser.endOffset(yyS.offset[yypt-2])
 		parser.setLastSelectFieldText(st, endOffset)
 		union.SelectList.Selects = append(union.SelectList.Selects, st)
 		if $7 != nil {
@@ -6224,7 +6227,7 @@ UnionClauseList:
 		st := $4.(*ast.SelectStmt)
 		st.IsAfterUnionDistinct = $3.(bool)
 		lastSelect := union.SelectList.Selects[len(union.SelectList.Selects)-1]
-		endOffset := parser.endOffset(&yyS[yypt-2])
+		endOffset := parser.endOffset(yyS.offset[yypt-2])
 		parser.setLastSelectFieldText(lastSelect, endOffset)
 		union.SelectList.Selects = append(union.SelectList.Selects, st)
 		$$ = union
@@ -6239,7 +6242,7 @@ UnionSelect:
 	{
 		st := $2.(*ast.SelectStmt)
 		st.IsInBraces = true
-		endOffset := parser.endOffset(&yyS[yypt])
+		endOffset := parser.endOffset(yyS.offset[yypt])
 		parser.setLastSelectFieldText(st, endOffset)
 		$$ = $2
 	}
@@ -8671,12 +8674,12 @@ RoleSpecList:
 CreateBindingStmt:
 	"CREATE" GlobalScope "BINDING" "FOR" SelectStmt "USING" SelectStmt
     	{
-		startOffset := parser.startOffset(&yyS[yypt-2])
-        	endOffset := parser.startOffset(&yyS[yypt-1])
+		startOffset := yyS.offset[yypt-2]
+        	endOffset := yyS.offset[yypt-1]
         	selStmt := $5.(*ast.SelectStmt)
         	selStmt.SetText(strings.TrimSpace(parser.src[startOffset:endOffset]))
 
-		startOffset = parser.startOffset(&yyS[yypt])
+		startOffset = yyS.offset[yypt]
 		hintedSelStmt := $7.(*ast.SelectStmt)
 		hintedSelStmt.SetText(strings.TrimSpace(parser.src[startOffset:]))
 
@@ -8698,7 +8701,7 @@ CreateBindingStmt:
 DropBindingStmt:
 	"DROP" GlobalScope "BINDING" "FOR" SelectStmt
 	{
-		startOffset := parser.startOffset(&yyS[yypt])
+		startOffset := yyS.offset[yypt]
 		selStmt := $5.(*ast.SelectStmt)
 		selStmt.SetText(strings.TrimSpace(parser.src[startOffset:]))
 

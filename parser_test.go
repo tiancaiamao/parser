@@ -3664,3 +3664,7 @@ func (checker *nodeTextCleaner) Enter(in ast.Node) (out ast.Node, skipChildren b
 func (checker *nodeTextCleaner) Leave(in ast.Node) (out ast.Node, ok bool) {
 	return in, true
 }
+
+func (s *testParserSuite) TestXXX(c *C) {
+	s.RunRestoreTest(c, "select * from t", "select * from xx.t")
+}

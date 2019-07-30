@@ -551,8 +551,8 @@ func %[1]sParse(yylex %[1]sLexer, parser *Parser) int {
 
 	yyEx, _ := yylex.(%[1]sLexerEx)
 	var yyn int
-	parser.yylval = %[1]sSymType{}
-	parser.yyVAL = %[1]sSymType{}
+	var yylval %[1]sSymType
+	var yyVAL %[1]sSymType
 	yyS := parser.cache
 
 	Nerrs := 0   /* number of errors */
@@ -580,18 +580,15 @@ ret1:
 yystack:
 	/* put a state and value onto the stack */
 	yyp++
-	if yyp >= len(yyS) {
-		nyys := make([]%[1]sSymType, len(yyS)*2)
-		copy(nyys, yyS)
-		yyS = nyys
-		parser.cache = yyS
+	if yyp >= yyS.Len() {
+		yyS.Grow()
 	}
-	yyS[yyp] = parser.yyVAL
-	yyS[yyp].yys = yystate
+	yyS.Set(yyp, &yyVAL)
+	yyS.yys[yyp] = yystate
 
 yynewstate:
 	if yychar < 0 {
-		yychar = %[1]slex1(yylex, &parser.yylval)
+		yychar = %[1]slex1(yylex, &yylval)
 		var ok bool
 		if yyxchar, ok = %[1]sXLAT[yychar]; !ok {
 			yyxchar = len(%[1]sSymNames) // > tab width
@@ -599,9 +596,9 @@ yynewstate:
 	}
 	if %[1]sDebug >= 4 {
 		var a []int
-		for _, v := range yyS[:yyp+1] {
-			a = append(a, v.yys)
-		}
+		// for _, v := range yyS[:yyp+1] {
+		// 	a = append(a, v.yys)
+		// }
 		__yyfmt__.Printf("state stack %%v\n", a)
 	}
 	row := %[1]sParseTab[yystate]
@@ -614,7 +611,7 @@ yynewstate:
 	switch {
 	case yyn > 0: // shift
 		yychar = -1
-		parser.yyVAL = parser.yylval
+		yyVAL = yylval
 		yystate = yyn
 		yyshift = yyn
 		if %[1]sDebug >= 2 {
@@ -662,12 +659,12 @@ yynewstate:
 
 			/* find a state where "error" is a legal shift action */
 			for yyp >= 0 {
-				row := %[1]sParseTab[yyS[yyp].yys]
+				row := %[1]sParseTab[yyS.yys[yyp]]
 				if yyError < len(row) {
 					yyn = int(row[yyError])+%[1]sTabOfs
 					if yyn > 0 { // hit
 						if %[1]sDebug >= 2 {
-							__yyfmt__.Printf("error recovery found error shift in state %%d\n", yyS[yyp].yys)
+							__yyfmt__.Printf("error recovery found error shift in state %%d\n", yyS.yys[yyp])
 						}
 						yystate = yyn /* simulate a shift of "error" */
 						goto yystack
@@ -676,7 +673,7 @@ yynewstate:
 
 				/* the current p has no shift on "error", pop stack */
 				if %[1]sDebug >= 2 {
-					__yyfmt__.Printf("error recovery pops state %%d\n", yyS[yyp].yys)
+					__yyfmt__.Printf("error recovery pops state %%d\n", yyS.yys[yyp])
 				}
 				yyp--
 			}
@@ -706,17 +703,14 @@ yynewstate:
 	_ = yypt // guard against "declared and not used"
 
 	yyp -= n
-	if yyp+1 >= len(yyS) {
-		nyys := make([]%[1]sSymType, len(yyS)*2)
-		copy(nyys, yyS)
-		yyS = nyys
-		parser.cache = yyS
+	if yyp+1 >= yyS.Len() {
+		yyS.Grow()
 	}
-	parser.yyVAL = yyS[yyp+1]
+	yyS.Get(yyp+1, &yyVAL)
 
 	/* consult goto table to find next state */
 	exState := yystate
-	yystate = int(%[1]sParseTab[yyS[yyp].yys][x])+%[1]sTabOfs
+	yystate = int(%[1]sParseTab[yyS.yys[yyp]][x])+%[1]sTabOfs
 	/* reduction by production r */
 	if %[1]sDebug >= 2 {
 		__yyfmt__.Printf("reduce using rule %%v (%%s), and goto state %%d\n", r, %[1]sSymNames[x], yystate)
@@ -760,7 +754,7 @@ yynewstate:
 			case parser.ActionValueGo:
 				mustFormat(f, "%s", part.Src)
 			case parser.ActionValueDlrDlr:
-				mustFormat(f, "parser.yyVAL.%s", typ)
+				mustFormat(f, "yyVAL.typ = %sType; yyVAL.%s", typ, typ)
 				if typ == "" {
 					panic("internal error 002")
 				}
@@ -769,11 +763,11 @@ yynewstate:
 				if typ == "" {
 					panic("internal error 003")
 				}
-				mustFormat(f, "yyS[yypt-%d].%s", max-num, typ)
+				mustFormat(f, "yyS.%s[yypt-%d]", typ, max-num)
 			case parser.ActionValueDlrTagDlr:
-				mustFormat(f, "parser.yyVAL.%s", part.Tag)
+				mustFormat(f, "yyVAL.%s", part.Tag)
 			case parser.ActionValueDlrTagNum:
-				mustFormat(f, "yyS[yypt-%d].%s", max-num, part.Tag)
+				mustFormat(f, "yyS.%s[yypt-%d]", part.Tag, max-num)
 			}
 		}
 		mustFormat(f, "\n")
@@ -781,7 +775,7 @@ yynewstate:
 	mustFormat(f, `%u
 	}
 
-	if yyEx != nil && yyEx.Reduced(r, exState, &parser.yyVAL) {
+	if yyEx != nil && yyEx.Reduced(r, exState, &yyVAL) {
 		return -1
 	}
 	goto yystack /* stack new state and value */

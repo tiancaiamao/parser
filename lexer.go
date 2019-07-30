@@ -182,6 +182,7 @@ func (s *Scanner) Lex(v *yySymType) int {
 		tok == stringLit &&
 		s.r.s[v.offset] == '"' {
 		tok = identifier
+		v.typ = identType
 	}
 
 	if tok == pipes && !(s.sqlMode.HasPipesAsConcatMode()) {

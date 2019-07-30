@@ -14,7 +14,10 @@
 package parser
 
 import (
+	"fmt"
+	"math/rand"
 	"testing"
+	"time"
 )
 
 func BenchmarkSysbenchSelect(b *testing.B) {
@@ -61,6 +64,52 @@ func BenchmarkParseSimple(b *testing.B) {
 				b.Failed()
 			}
 		}
+	}
+	b.ReportAllocs()
+}
+
+func BenchmarkWideInsert(b *testing.B) {
+	const colNum = 60
+	intColNum := colNum / 3
+	varCharColNum := (colNum - intColNum) / 2
+	dataColNum := colNum - intColNum - varCharColNum
+
+	sql := "insert into table_name values ("
+	for i := 0; i < intColNum; i++ {
+		if i > 0 {
+			sql += ", "
+		}
+		sql = sql + fmt.Sprintf("%d", rand.Intn(65532))
+	}
+	for i := 0; i < varCharColNum; i++ {
+		sql = sql + fmt.Sprintf(`, "abcdefghi-12335"`)
+	}
+	now := time.Unix(time.Now().Unix()+rand.Int63n(int64(value)+24*60*60*30), 0)
+	for i := 0; i < dataColNum; i++ {
+		sql = sql + fmt.Sprintf(`, "%s"`, now.Format("2006-01-02 15:04:05"))
+	}
+	sql += ")"
+
+	// go func() {
+	// 	xx := make([]*[25]byte, 10000)
+	// 	i := 0
+	// 	for {
+	// 		i = (i + 1) % len(xx)
+	// 		xx[i] = &[25]byte{}
+	// 	}
+	// }()
+
+	parser := New()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		parser.Parse("begin", "", "")
+		for i := 0; i < 200; i++ {
+			_, _, err := parser.Parse(sql, "", "")
+			if err != nil {
+				fmt.Println("sql = ", sql, err)
+			}
+		}
+		parser.Parse("commit", "", "")
 	}
 	b.ReportAllocs()
 }

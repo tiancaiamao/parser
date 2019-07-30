@@ -94,9 +94,162 @@ type Parser struct {
 	lexer     Scanner
 
 	// the following fields are used by yyParse to reduce allocation.
-	cache  []yySymType
-	yylval yySymType
-	yyVAL  yySymType
+	cache *yySymCache
+}
+
+type yySymCache struct {
+	typ       []int8
+	yys       []int
+	offset    []int
+	item      []interface{}
+	ident     []string
+	expr      []ast.ExprNode
+	statement []ast.StmtNode
+}
+
+const (
+	offsetType int8 = iota
+	itemType
+	identType
+	exprType
+	statementType
+)
+
+func newYYSymCache() *yySymCache {
+	const initSize = 200
+	return &yySymCache{
+		typ:       make([]int8, initSize),
+		yys:       make([]int, initSize),
+		offset:    make([]int, initSize),
+		item:      make([]interface{}, initSize),
+		ident:     make([]string, initSize),
+		expr:      make([]ast.ExprNode, initSize),
+		statement: make([]ast.StmtNode, initSize),
+	}
+}
+
+func (s *yySymCache) Grow() {
+	fmt.Println("!!!! grow symCache")
+	newTyp := make([]int8, len(s.typ)*2)
+	copy(newTyp, s.typ)
+	s.typ = newTyp
+
+	newYys := make([]int, len(s.yys)*2)
+	copy(newYys, s.yys)
+	s.yys = newYys
+
+	newOffset := make([]int, len(s.offset)*2)
+	copy(newOffset, s.offset)
+	s.offset = newOffset
+
+	newItem := make([]interface{}, len(s.item)*2)
+	copy(newItem, s.item)
+	s.item = newItem
+
+	newIdent := make([]string, len(s.ident)*2)
+	copy(newIdent, s.ident)
+	s.ident = newIdent
+
+	newExpr := make([]ast.ExprNode, len(s.expr)*2)
+	copy(newExpr, s.expr)
+	s.expr = newExpr
+
+	newStmt := make([]ast.StmtNode, len(s.statement)*2)
+	copy(newStmt, s.statement)
+	s.statement = newStmt
+}
+
+func printSym(str string, val *yySymType) {
+	fmt.Printf(str)
+	switch val.typ {
+	case offsetType:
+		fmt.Println("val.offset = ", val.offset)
+	case itemType:
+		fmt.Printf("val.item = %#v\n", val.item)
+	case identType:
+		fmt.Println("val.ident = ", val.ident)
+	case exprType:
+		fmt.Println("val.expr = ", val.expr)
+	case statementType:
+		fmt.Println("val.stmt = ", val.statement)
+	default:
+		fmt.Println("default ??", val.typ)
+	}
+}
+
+func stackSetOffset(s *yySymCache, yyp int, val *yySymType) {
+	s.offset[yyp] = val.offset
+	s.typ[yyp] = val.typ
+}
+
+func stackSetItem(s *yySymCache, yyp int, val *yySymType) {
+	s.item[yyp] = val.item
+	s.typ[yyp] = val.typ
+}
+
+func stackSetIdent(s *yySymCache, yyp int, val *yySymType) {
+	s.ident[yyp] = val.ident
+	s.typ[yyp] = val.typ
+}
+
+func stackSetExpr(s *yySymCache, yyp int, val *yySymType) {
+	s.expr[yyp] = val.expr
+	s.typ[yyp] = val.typ
+}
+
+func stackSetStmt(s *yySymCache, yyp int, val *yySymType) {
+	s.statement[yyp] = val.statement
+	s.typ[yyp] = val.typ
+}
+
+var setFn = []func(s *yySymCache, yyp int, val *yySymType){
+	stackSetOffset,
+	stackSetItem,
+	stackSetIdent,
+	stackSetExpr,
+	stackSetStmt,
+}
+
+func (s *yySymCache) Set(yyp int, val *yySymType) {
+	s.typ[yyp] = val.typ
+	switch val.typ {
+	case offsetType:
+		s.offset[yyp] = val.offset
+	case itemType:
+		s.item[yyp] = val.item
+	case identType:
+		s.ident[yyp] = val.ident
+	case exprType:
+		s.expr[yyp] = val.expr
+	case statementType:
+		s.statement[yyp] = val.statement
+	default:
+		fmt.Println("unknown val type = ", val.typ)
+	}
+	// fn[val.typ](s, yyp, val)
+}
+
+func (s *yySymCache) Get(yyp int, val *yySymType) {
+	tp := s.typ[yyp]
+	switch tp {
+	case offsetType:
+		val.item = s.offset[yyp]
+	case itemType:
+		val.item = s.item[yyp]
+	case identType:
+		val.ident = s.ident[yyp]
+	case exprType:
+		val.expr = s.expr[yyp]
+	case statementType:
+		val.statement = s.statement[yyp]
+	default:
+		fmt.Println("unknown val type = ", tp)
+	}
+	val.typ = tp
+}
+
+func (s *yySymCache) Len() int {
+	return len(s.yys)
 }
 
 type stmtTexter interface {
@@ -113,7 +266,8 @@ func New() *Parser {
 	}
 
 	return &Parser{
-		cache: make([]yySymType, 200),
+		// cache: make([]yySymType, 200),
+		cache: newYYSymCache(),
 	}
 }
 
@@ -205,8 +359,7 @@ func (parser *Parser) startOffset(v *yySymType) int {
 	return v.offset
 }
 
-func (parser *Parser) endOffset(v *yySymType) int {
-	offset := v.offset
+func (parser *Parser) endOffset(offset int) int {
 	for offset > 0 && unicode.IsSpace(rune(parser.src[offset-1])) {
 		offset--
 	}
@@ -235,8 +388,10 @@ func toInt(l yyLexer, lval *yySymType, str string) int {
 	switch {
 	case n <= math.MaxInt64:
 		lval.item = int64(n)
+		lval.typ = itemType
 	default:
 		lval.item = n
+		lval.typ = itemType
 	}
 	return intLit
 }

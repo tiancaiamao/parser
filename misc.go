@@ -714,12 +714,15 @@ func handleIdent(lval *yySymType) int {
 	// [_charset_name]'string' [COLLATE collation_name]
 	// See https://dev.mysql.com/doc/refman/5.7/en/charset-literal.html
 	if !strings.HasPrefix(s, "_") {
+		lval.typ = identType
 		return identifier
 	}
 	cs, _, err := charset.GetCharsetInfo(s[1:])
 	if err != nil {
+		lval.typ = identType
 		return identifier
 	}
 	lval.ident = cs
+	lval.typ = identType
 	return underscoreCS
 }
