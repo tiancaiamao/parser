@@ -2899,6 +2899,7 @@ type SplitOption struct {
 	Upper      []ExprNode
 	Num        int64
 	ValueLists [][]ExprNode
+	Statistics []*Assignment
 }
 
 type SplitSyntaxOption struct {
@@ -2983,7 +2984,27 @@ func (n *SplitRegionStmt) Accept(v Visitor) (Node, bool) {
 }
 
 func (n *SplitOption) Restore(ctx *format.RestoreCtx) error {
-	if len(n.ValueLists) == 0 {
+	switch {
+	case len(n.ValueLists) > 0:
+		ctx.WriteKeyWord("BY ")
+		for i, row := range n.ValueLists {
+			if i != 0 {
+				ctx.WritePlain(",")
+			}
+			ctx.WritePlain("(")
+			for j, v := range row {
+				if j != 0 {
+					ctx.WritePlain(",")
+				}
+				if err := v.Restore(ctx); err != nil {
+					return errors.Annotatef(err, "An error occurred while restore SplitOption.ValueLists[%d][%d]", i, j)
+				}
+			}
+			ctx.WritePlain(")")
+		}
+	case len(n.Statistics) > 0:
+		ctx.WriteKeyWord("USING STATISTICS")
+	default:
 		ctx.WriteKeyWord("BETWEEN ")
 		ctx.WritePlain("(")
 		for j, v := range n.Lower {
@@ -3009,23 +3030,6 @@ func (n *SplitOption) Restore(ctx *format.RestoreCtx) error {
 		ctx.WritePlain(")")
 		ctx.WriteKeyWord(" REGIONS")
 		ctx.WritePlainf(" %d", n.Num)
-		return nil
-	}
-	ctx.WriteKeyWord("BY ")
-	for i, row := range n.ValueLists {
-		if i != 0 {
-			ctx.WritePlain(",")
-		}
-		ctx.WritePlain("(")
-		for j, v := range row {
-			if j != 0 {
-				ctx.WritePlain(",")
-			}
-			if err := v.Restore(ctx); err != nil {
-				return errors.Annotatef(err, "An error occurred while restore SplitOption.ValueLists[%d][%d]", i, j)
-			}
-		}
-		ctx.WritePlain(")")
 	}
 	return nil
 }
