@@ -2345,12 +2345,13 @@ SplitRegionStmt:
 			SplitOpt:       $8.(*ast.SplitOption),
 		}
 	}
-|	"SPLIT" SplitSyntaxOption "TABLE" TableName "USING" "STATISTICS" AssignmentList
+|	"SPLIT" SplitSyntaxOption "TABLE" TableName "USING" "STATISTICS" AssignmentList "REGIONS" Int64Num
 	{
 		$$ = &ast.SplitRegionStmt{
 			Table: $4.(*ast.TableName),
 			SplitOpt: &ast.SplitOption{
 				Statistics: $7.([]*ast.Assignment),
+				Num:        $9.(int64),
 			},
 		}
 	}
