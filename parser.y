@@ -115,6 +115,7 @@ import (
 	deleteKwd         "DELETE"
 	denseRank         "DENSE_RANK"
 	desc              "DESC"
+	deterministic     "DETERMINISTIC"
 	describe          "DESCRIBE"
 	distinct          "DISTINCT"
 	distinctRow       "DISTINCTROW"
@@ -512,6 +513,7 @@ import (
 	recover               "RECOVER"
 	redundant             "REDUNDANT"
 	reload                "RELOAD"
+	returns               "RETURNS"
 	remove                "REMOVE"
 	reorganize            "REORGANIZE"
 	repair                "REPAIR"
@@ -836,6 +838,7 @@ import (
 	CreateBindingStmt      "CREATE BINDING  statement"
 	CreateSequenceStmt     "CREATE SEQUENCE statement"
 	CreateStatisticsStmt   "CREATE STATISTICS statement"
+	CreateFunctionStmt     "CREATE FUNCTION statement"
 	DoStmt                 "Do statement"
 	DropDatabaseStmt       "DROP DATABASE statement"
 	DropImportStmt         "DROP IMPORT statement"
@@ -926,6 +929,8 @@ import (
 	ClearPasswordExpireOptions             "Clear password expire options"
 	ColumnDef                              "table column definition"
 	ColumnDefList                          "table column definition list"
+	FunctionColumnDefList                  "function column definition list"
+	FunctionColumnDef                      "function column definition"
 	ColumnName                             "column name"
 	ColumnNameOrUserVariable               "column name or user variable"
 	ColumnNameList                         "column name list"
@@ -984,6 +989,13 @@ import (
 	FieldItem                              "Field item for load data clause"
 	FieldItemList                          "Field items for load data clause"
 	FuncDatetimePrec                       "Function datetime precision"
+	FunctionName                           "Function name"
+	FunctionParameterOpt                   "Function column definition list option"
+	ReturnDataOpt                          "Function return data opt"
+	CharacteristicOptionList               "Function or Procedure characteristic option list"
+	CharacteristicOption                   "Function or Procedure characteristic option"
+	DeterministicOrNotOp                   "Deterministic or not"
+	RoutineBody                            "Function or Procedure routine body"
 	GetFormatSelector                      "{DATE|DATETIME|TIME|TIMESTAMP}"
 	GlobalScope                            "The scope of variable"
 	GroupByClause                          "GROUP BY clause"
@@ -5740,6 +5752,7 @@ UnReservedKeyword:
 |	"CLIENT"
 |	"SLAVE"
 |	"RELOAD"
+|	"RETURNS"
 |	"TEMPORARY"
 |	"ROUTINE"
 |	"EVENT"
@@ -10525,6 +10538,7 @@ Statement:
 |	CreateRoleStmt
 |	CreateBindingStmt
 |	CreateSequenceStmt
+|	CreateFunctionStmt
 |	CreateStatisticsStmt
 |	DoStmt
 |	DropDatabaseStmt
@@ -13132,5 +13146,143 @@ RowStmt:
 	"ROW" RowValue
 	{
 		$$ = &ast.RowExpr{Values: $2.([]ast.ExprNode)}
+	}
+
+/********************************************************************
+ * Create Function Statement
+ *
+ * CREATE
+ *     [DEFINER = user]
+ *     FUNCTION sp_name ([func_parameter[,...]])
+ *     RETURNS type
+ *     [characteristic ...] routine_body
+ *
+ * func_parameter:
+ *     param_name type
+ *
+ * type:
+ *     Any valid MySQL data type
+ *
+ * characteristic: {
+ *     COMMENT 'string'
+ *   | LANGUAGE SQL
+ *   | [NOT] DETERMINISTIC
+ *   | { CONTAINS SQL | NO SQL | READS SQL DATA | MODIFIES SQL DATA }
+ *   | SQL SECURITY { DEFINER | INVOKER }
+ * }
+ *
+ * routine_body:
+ *     Valid SQL routine statement
+ *
+ * Ref:
+ *    https://dev.mysql.com/doc/refman/8.0/en/create-procedure.html
+ *******************************************************************/
+CreateFunctionStmt:
+	"CREATE" "FUNCTION" FunctionName FunctionParameterOpt ReturnDataOpt CharacteristicOptionList RoutineBody
+	{
+		x := &ast.CreateFunctionStmt{
+			Name: $3.(*ast.TableName),
+			Args: $4.([]*ast.ColumnDef),
+			Rtp:  $5.(*types.FieldType),
+		}
+		if $6 != nil {
+			x.Characteristic = $6.(*ast.CharacteristicOption)
+		}
+		$$ = x
+		yylex.AppendError(yylex.Errorf("TiDB doesn't support FUNCTION, FUNCTION will be parsed but ignored."))
+		parser.lastErrorAsWarn()
+	}
+
+CharacteristicOptionList:
+	/* empty */
+	{
+		$$ = nil
+	}
+|	CharacteristicOptionList CharacteristicOption
+	{
+		// Merge the options
+		if $1 == nil {
+			$$ = $2
+		} else {
+			opt1 := $1.(*ast.CharacteristicOption)
+			opt2 := $1.(*ast.CharacteristicOption)
+			if len(opt2.Comment) > 0 {
+				opt1.Comment = opt2.Comment
+			} else if opt2.Deterministic != opt1.Deterministic {
+				opt1.Deterministic = opt2.Deterministic
+			} else if opt2.Security != opt1.Security {
+				opt1.Security = opt2.Security
+			}
+			$$ = opt1
+		}
+	}
+
+CharacteristicOption:
+	{
+		$$ = nil
+	}
+|	"COMMENT" stringLit
+	{
+		$$ = &ast.CharacteristicOption{
+			Comment: $2,
+		}
+	}
+|	DeterministicOrNotOp
+	{
+		$$ = &ast.CharacteristicOption{
+			Deterministic: $1.(bool),
+		}
+	}
+|	ViewSQLSecurity
+	{
+		$$ = &ast.CharacteristicOption{
+			Security: $1.(model.ViewSecurity),
+		}
+	}
+
+DeterministicOrNotOp:
+	"DETERMINISTIC"
+	{
+		$$ = true
+	}
+|	"NOT" "DETERMINISTIC"
+	{
+		$$ = false
+	}
+
+FunctionName:
+	TableName
+
+FunctionParameterOpt:
+	/* empty */
+	{
+		$$ = make([]*ast.ColumnDef, 0, 1)
+	}
+|	'(' FunctionColumnDefList ')'
+	{
+		$$ = $2.([]*ast.ColumnDef)
+	}
+
+FunctionColumnDefList:
+	FunctionColumnDef
+	{
+		$$ = []*ast.ColumnDef{$1.(*ast.ColumnDef)}
+	}
+|	FunctionColumnDefList ',' FunctionColumnDef
+	{
+		$$ = append($1.([]*ast.ColumnDef), $3.(*ast.ColumnDef))
+	}
+
+FunctionColumnDef:
+	ColumnName Type
+	{
+		colDef := &ast.ColumnDef{Name: $1.(*ast.ColumnName), Tp: $2.(*types.FieldType)}
+		$$ = colDef
+	}
+
+ReturnDataOpt:
+	"RETURNS" Type
+	{
+		$$ = $2.(*types.FieldType)
 	}
 %%

@@ -3705,3 +3705,119 @@ func (n *AlterSequenceStmt) Accept(v Visitor) (Node, bool) {
 	n.Name = node.(*TableName)
 	return v.Leave(n)
 }
+
+// CreateFunctionStmt is a statement to create a Function.
+type CreateFunctionStmt struct {
+	ddlNode
+
+	IfNotExists bool
+	Name        *TableName
+	Args        []*ColumnDef
+	Rtp         *types.FieldType
+
+	Characteristic *CharacteristicOption
+}
+
+// Restore implements Node interface.
+func (n *CreateFunctionStmt) Restore(ctx *format.RestoreCtx) error {
+	ctx.WriteKeyWord("CREATE ")
+	ctx.WriteKeyWord("FUNCTION ")
+	if n.IfNotExists {
+		ctx.WriteKeyWord("IF NOT EXISTS ")
+	}
+	if err := n.Name.Restore(ctx); err != nil {
+		return errors.Annotate(err, "An error occurred while create CreateFunctionStmt.Name")
+	}
+	if len(n.Args) > 0 {
+		ctx.WritePlain("(")
+		for i, col := range n.Args {
+			if i > 0 {
+				ctx.WritePlain(",")
+			}
+			if err := col.Restore(ctx); err != nil {
+				return errors.Annotatef(err, "An error occurred while splicing CreateFunctionStmt Args: [%v]", i)
+			}
+		}
+
+		ctx.WritePlain(")")
+	}
+	ctx.WritePlain(" RETURNS ")
+	if err := n.Rtp.Restore(ctx); err != nil {
+		return errors.Annotatef(err, "An error occurred while splicing CreateFunctionStmt Rtp: [%v]", n.Rtp)
+	}
+	if n.Characteristic != nil {
+		ctx.WritePlain(" ")
+		if err := n.Characteristic.Restore(ctx); err != nil {
+			return errors.Annotatef(err, "An error occurred while splicing CreateFunctionStmt Characteristic: [%v]", n.Characteristic)
+		}
+	}
+
+	return nil
+}
+
+// Accept implements Node Accept interface.
+func (n *CreateFunctionStmt) Accept(v Visitor) (Node, bool) {
+	newNode, skipChildren := v.Enter(n)
+	if skipChildren {
+		return v.Leave(newNode)
+	}
+	n = newNode.(*CreateFunctionStmt)
+	node, ok := n.Name.Accept(v)
+	if !ok {
+		return n, false
+	}
+	n.Name = node.(*TableName)
+	return v.Leave(n)
+}
+
+// CharacteristicOption ...
+// CharacteristicOption for function or procedure
+type CharacteristicOption struct {
+	node
+
+	Comment       string
+	Deterministic bool
+	Security      model.ViewSecurity
+}
+
+// Accept implements Node Accept interface.
+// Accept implements Node Accept interface.
+func (n *CharacteristicOption) Accept(v Visitor) (Node, bool) {
+	newNode, skipChildren := v.Enter(n)
+	if skipChildren {
+		return v.Leave(newNode)
+	}
+	n = newNode.(*CharacteristicOption)
+	return v.Leave(n)
+}
+
+// Restore implements Node interface.
+func (n *CharacteristicOption) Restore(ctx *format.RestoreCtx) error {
+	hasPrevOption := false
+	if n.Comment != "" {
+		if hasPrevOption {
+			ctx.WritePlain(" ")
+		}
+		ctx.WriteKeyWord("COMMENT ")
+		ctx.WriteString(n.Comment)
+		hasPrevOption = true
+	}
+	if n.Deterministic {
+		if hasPrevOption {
+			ctx.WritePlain(" ")
+		}
+		ctx.WriteKeyWord("DETERMINISTIC")
+		hasPrevOption = true
+	} else {
+		if hasPrevOption {
+			ctx.WritePlain(" ")
+		}
+		ctx.WriteKeyWord("NOT DETERMINISTIC")
+		hasPrevOption = true
+	}
+
+	ctx.WriteKeyWord(" SQL SECURITY ")
+	ctx.WriteKeyWord(n.Security.String())
+
+	return nil
+}
